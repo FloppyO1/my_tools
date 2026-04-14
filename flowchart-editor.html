@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Flow Editor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f4f0;--sidebar-bg:#ffffff;--canvas-bg:#fafaf8;
+  --border:#ddd9d0;--border-strong:#bbb5aa;
+  --text:#1a1814;--text-muted:#7a756e;--text-light:#a09b93;
+  --accent:#2563eb;--accent-light:#eff6ff;--accent-hover:#1d4ed8;
+  --green:#16a34a;--green-light:#f0fdf4;
+  --amber:#d97706;--amber-light:#fffbeb;
+  --red:#dc2626;--red-light:#fef2f2;
+  --orange:#f59e0b;--orange-light:#fffbeb;
+  --shadow:0 1px 3px rgba(0,0,0,.08);
+  --shadow-md:0 4px 12px rgba(0,0,0,.1);
+  --radius:8px;--sidebar-w:300px;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+
+/* TOPBAR */
+#topbar{display:flex;align-items:center;padding:0 16px;height:52px;background:var(--sidebar-bg);border-bottom:1px solid var(--border);gap:8px;z-index:100;flex-shrink:0}
+#diagram-name{font-size:15px;font-weight:600;color:var(--text);background:none;border:none;outline:none;padding:4px 8px;border-radius:6px;min-width:180px;transition:background .15s;font-family:inherit}
+#diagram-name:hover{background:var(--bg)}
+#diagram-name:focus{background:var(--accent-light);color:var(--accent)}
+.topbar-sep{width:1px;height:28px;background:var(--border)}
+.top-btn{display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:var(--radius);border:1.5px solid;font-size:12px;font-weight:600;cursor:pointer;background:transparent;letter-spacing:.02em;transition:all .15s;font-family:inherit;white-space:nowrap}
+.top-btn.load{border-color:var(--amber);color:var(--amber)}
+.top-btn.load:hover{background:var(--amber-light)}
+.top-btn.save{border-color:var(--green);color:var(--green)}
+.top-btn.save:hover{background:var(--green-light)}
+.top-btn.svg{border-color:var(--accent);color:var(--accent)}
+.top-btn.svg:hover{background:var(--accent-light)}
+.top-btn.hist{border-color:var(--border-strong);color:var(--text-muted)}
+.top-btn.hist:hover:not(:disabled){border-color:var(--text-muted);color:var(--text)}
+.top-btn:disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
+.hist-group{display:flex;gap:4px;margin-left:auto}
+input[type=file]{display:none}
+
+/* MAIN */
+#main{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+#sidebar{width:var(--sidebar-w);background:var(--sidebar-bg);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
+.sidebar-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.sidebar-section:last-child{border-bottom:none;flex:1}
+.section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-light);margin-bottom:10px}
+.sb-input{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s;margin-bottom:8px}
+.sb-input:focus{border-color:var(--accent);background:var(--accent-light)}
+.sb-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:4px}
+
+#arrow-label-wrap{display:none;margin-bottom:8px}
+
+.shape-btns{display:flex;gap:8px}
+.shape-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);cursor:pointer;transition:all .15s;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-family:inherit}
+.shape-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light)}
+.shape-btn:hover .shape-icon{stroke:var(--accent)}
+.shape-btn svg{width:28px;height:28px}
+.shape-icon{fill:none;stroke:var(--text-muted);stroke-width:2;transition:stroke .15s}
+#add-hint{font-size:11px;color:var(--text-light);text-align:center;margin-top:6px;line-height:1.4}
+
+.action-btns{display:flex;flex-direction:column;gap:8px}
+.action-btn{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius);background:transparent;font-size:12px;font-weight:600;cursor:pointer;color:var(--text-muted);letter-spacing:.02em;transition:all .15s;font-family:inherit;text-align:left;width:100%}
+.action-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light)}
+.action-btn.danger:hover{border-color:var(--red);color:var(--red);background:var(--red-light)}
+.action-btn.active{border-color:var(--accent);color:var(--accent);background:var(--accent-light)}
+.btn-icon{font-size:14px;width:18px;text-align:center}
+
+/* Connect inline panel */
+#connect-panel{display:none;margin-top:8px;padding:12px;background:var(--accent-light);border:1.5px solid var(--accent);border-radius:var(--radius)}
+#connect-panel.visible{display:block}
+#connect-step-text{font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px}
+#connect-arrow-wrap{display:none;margin-bottom:8px}
+#connect-arrow-wrap label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:4px}
+#connect-arrow-input{width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s}
+#connect-arrow-input:focus{border-color:var(--accent)}
+#connect-cancel-btn{width:100%;padding:7px 12px;border-radius:6px;border:1.5px solid var(--border);background:transparent;font-size:11px;font-weight:600;cursor:pointer;color:var(--text-muted);font-family:inherit;transition:all .15s}
+#connect-cancel-btn:hover{border-color:var(--red);color:var(--red);background:var(--red-light)}
+
+/* Insert inline panel */
+#insert-panel{display:none;margin-top:8px;padding:12px;background:#f0fdf4;border:1.5px solid var(--green);border-radius:var(--radius)}
+#insert-panel.visible{display:block}
+#insert-step-text{font-size:12px;font-weight:700;color:var(--green);margin-bottom:8px}
+.insert-field{margin-bottom:8px}
+.insert-field label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:4px}
+.insert-field input,.insert-field select{width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s}
+.insert-field input:focus,.insert-field select:focus{border-color:var(--green)}
+#insert-shape-btns{display:flex;gap:6px;margin-bottom:8px}
+.insert-shape-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--bg);cursor:pointer;transition:all .15s;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-family:inherit}
+.insert-shape-btn:hover{border-color:var(--green);color:var(--green);background:#f0fdf4}
+.insert-shape-btn:hover .shape-icon{stroke:var(--green)}
+.insert-shape-btn svg{width:22px;height:22px}
+#insert-hint{font-size:11px;color:var(--green);text-align:center;margin-bottom:6px;line-height:1.4;font-weight:600}
+#insert-cancel-btn{width:100%;padding:7px 12px;border-radius:6px;border:1.5px solid var(--border);background:transparent;font-size:11px;font-weight:600;cursor:pointer;color:var(--text-muted);font-family:inherit;transition:all .15s}
+#insert-cancel-btn:hover{border-color:var(--red);color:var(--red);background:var(--red-light)}
+
+/* Delete connection panel */
+#delete-panel{display:none;margin-top:8px;padding:12px;background:#fef2f2;border:1.5px solid var(--red);border-radius:var(--radius)}
+#delete-panel.visible{display:block}
+#delete-step-text{font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px}
+#delete-cancel-btn{width:100%;padding:7px 12px;border-radius:6px;border:1.5px solid var(--border);background:transparent;font-size:11px;font-weight:600;cursor:pointer;color:var(--text-muted);font-family:inherit;transition:all .15s}
+#delete-cancel-btn:hover{border-color:var(--red);color:var(--red);background:var(--red-light)}
+
+/* Props */
+#props-panel{display:none}
+#props-panel.visible{display:block}
+.prop-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.prop-title{font-size:13px;font-weight:700;color:var(--text)}
+#props-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:20px;background:var(--accent-light);color:var(--accent)}
+#props-badge.edge{background:var(--orange-light);color:var(--orange)}
+.prop-row{margin-bottom:10px}
+.prop-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:4px}
+.prop-input{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s}
+.prop-input:focus{border-color:var(--accent);background:var(--accent-light)}
+#props-edges-section{display:none;margin-top:4px}
+#props-edges-section.visible{display:block}
+.edge-prop-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.edge-prop-row label{font-size:11px;color:var(--text-muted);white-space:nowrap;flex-shrink:0;min-width:60px;overflow:hidden;text-overflow:ellipsis}
+.edge-prop-input{flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s}
+.edge-prop-input:focus{border-color:var(--accent)}
+#no-selection{color:var(--text-light);font-size:12px;text-align:center;padding:10px 0}
+#edge-info-text{font-size:11px;color:var(--text-muted);margin-top:4px;padding:6px 8px;background:var(--bg);border-radius:6px;border:1px solid var(--border)}
+
+/* MODE HINT */
+#mode-hint{display:none;position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--accent);color:white;border-radius:20px;padding:8px 20px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;box-shadow:var(--shadow-md);z-index:200;pointer-events:none}
+#mode-hint.visible{display:block}
+
+/* CANVAS */
+#canvas-area{flex:1;background:var(--canvas-bg);overflow:hidden;position:relative;user-select:none}
+#canvas-area.panning{cursor:grabbing}
+#pan-layer{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+#mermaid-container{padding:40px;display:inline-block;min-width:600px;min-height:400px}
+
+/* Increase hitbox for edge selection */
+#mermaid-output .edgePath path {
+  stroke-width: 8px !important;
+  cursor: pointer;
+  transition: stroke 0.15s;
+}
+
+#mermaid-output .edgePath:hover path {
+  stroke: #f59e0b !important;
+}
+
+/* EMPTY STATE */
+#empty-state{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;color:var(--text-light);text-align:center;gap:8px}
+#empty-state .es-icon{font-size:40px;opacity:.4}
+#empty-state .es-title{font-size:15px;font-weight:600}
+#empty-state .es-sub{font-size:12px}
+#empty-state.hidden{display:none}
+
+/* MODALS */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:300;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.modal{background:var(--sidebar-bg);border:1px solid var(--border);border-radius:14px;padding:28px;min-width:360px;box-shadow:var(--shadow-md)}
+.modal h3{font-size:15px;font-weight:700;margin-bottom:18px;color:var(--text)}
+.modal label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);display:block;margin-bottom:5px;margin-top:12px;font-weight:700}
+.modal label:first-of-type{margin-top:0}
+.modal input,.modal select{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s}
+.modal input:focus,.modal select:focus{border-color:var(--accent);background:var(--accent-light)}
+.modal-row{display:flex;gap:10px;justify-content:flex-end;margin-top:22px}
+.m-btn{padding:9px 22px;border-radius:20px;border:1.5px solid var(--border);color:var(--text-muted);background:transparent;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.04em;transition:all .15s;font-family:inherit}
+.m-btn:hover{border-color:var(--accent);color:var(--accent)}
+.m-btn.primary{border-color:var(--accent);color:white;background:var(--accent)}
+.m-btn.primary:hover{background:var(--accent-hover)}
+
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <input type="text" id="diagram-name" value="Nuovo Diagramma" placeholder="Nome diagramma...">
+  <div class="topbar-sep"></div>
+  <button class="top-btn load" onclick="loadJSON()">⬆ Carica</button>
+  <button class="top-btn save" onclick="saveJSON()">💾 Salva JSON</button>
+  <button class="top-btn svg" onclick="saveSVG()">🖼 Esporta SVG</button>
+  <div class="hist-group">
+    <button class="top-btn hist" id="undo-btn" onclick="undo()" disabled>↩ Annulla</button>
+    <button class="top-btn hist" id="redo-btn" onclick="redo()" disabled>↪ Ripeti</button>
+  </div>
+</div>
+<input type="file" id="file-input" accept=".json" onchange="loadJSONFile(event)">
+
+<div id="mode-hint"></div>
+
+<div id="main">
+  <div id="sidebar">
+
+    <!-- NEW BLOCK -->
+    <div class="sidebar-section">
+      <div class="section-title">Nuovo Blocco</div>
+      <input type="text" id="new-block-input" class="sb-input" placeholder="Testo del blocco..." autocomplete="off">
+
+      <div id="arrow-label-wrap">
+        <label class="sb-label">Testo freccia (dal padre)</label>
+        <input type="text" id="new-arrow-input" class="sb-input" placeholder="es. Sì / No" autocomplete="off" style="margin-bottom:0">
+      </div>
+
+      <div style="margin-bottom:8px">
+        <label class="sb-label">Collega da (opzionale)</label>
+        <select id="parent-select" class="sb-input" style="margin-bottom:0;cursor:pointer" onchange="onParentChange()">
+          <option value="">— Nodo isolato —</option>
+        </select>
+      </div>
+
+      <div class="shape-btns">
+        <button class="shape-btn" onclick="addBlock('rect')">
+          <svg viewBox="0 0 30 22"><rect x="2" y="3" width="26" height="16" rx="2" class="shape-icon"/></svg>
+          Processo
+        </button>
+        <button class="shape-btn" onclick="addBlock('circle')">
+          <svg viewBox="0 0 30 30"><ellipse cx="15" cy="15" rx="12" ry="11" class="shape-icon"/></svg>
+          Cerchio
+        </button>
+        <button class="shape-btn" onclick="addBlock('diamond')">
+          <svg viewBox="0 0 30 30"><polygon points="15,2 28,15 15,28 2,15" class="shape-icon"/></svg>
+          Decisione
+        </button>
+      </div>
+      <div id="add-hint">Clicca la forma per inserire il blocco</div>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="sidebar-section">
+      <div class="section-title">Azioni</div>
+      <div class="action-btns">
+        <button class="action-btn" id="connect-btn" onclick="toggleConnectMode()">
+          <span class="btn-icon">🔗</span> Nuovo collegamento
+        </button>
+        <div id="connect-panel">
+          <div id="connect-step-text">Passo 1: clicca il blocco di partenza</div>
+          <div id="connect-arrow-wrap">
+            <label>Testo freccia</label>
+            <input type="text" id="connect-arrow-input" placeholder="es. Sì / No">
+          </div>
+          <button id="connect-cancel-btn" onclick="exitConnectMode()">✕ Annulla collegamento</button>
+        </div>
+        <button class="action-btn" id="insert-btn" onclick="toggleInsertMode()">
+          <span class="btn-icon">↕</span> Inserisci tra nodi
+        </button>
+        <div id="insert-panel">
+          <div id="insert-step-text">Clicca una freccia sul canvas</div>
+          <div class="insert-field">
+            <label>Testo nuovo blocco</label>
+            <input type="text" id="insert-text-input" placeholder="Testo blocco..." autocomplete="off">
+          </div>
+          <div id="insert-hint">Poi clicca la forma da inserire ↓</div>
+          <div id="insert-shape-btns">
+            <button class="insert-shape-btn" onclick="confirmInsertInline('rect')">
+              <svg viewBox="0 0 30 22"><rect x="2" y="3" width="26" height="16" rx="2" class="shape-icon"/></svg>
+              Processo
+            </button>
+            <button class="insert-shape-btn" onclick="confirmInsertInline('circle')">
+              <svg viewBox="0 0 30 30"><ellipse cx="15" cy="15" rx="12" ry="11" class="shape-icon"/></svg>
+              Cerchio
+            </button>
+            <button class="insert-shape-btn" onclick="confirmInsertInline('diamond')">
+              <svg viewBox="0 0 30 30"><polygon points="15,2 28,15 15,28 2,15" class="shape-icon"/></svg>
+              Decisione
+            </button>
+          </div>
+          <button id="insert-cancel-btn" onclick="exitInsertMode()">✕ Annulla inserimento</button>
+        </div>
+        <button class="action-btn" id="delete-btn" onclick="toggleDeleteMode()">
+          <span class="btn-icon">❌</span> Elimina connessione
+        </button>
+        <div id="delete-panel">
+          <div id="delete-step-text">Passo 1: clicca il blocco di partenza</div>
+          <button id="delete-cancel-btn" onclick="exitDeleteMode()">✕ Annulla eliminazione</button>
+        </div>
+        <button class="action-btn danger" onclick="deleteSelected()">
+          <span class="btn-icon">🗑</span> Elimina selezionato
+        </button>
+      </div>
+    </div>
+
+    <!-- PROPERTIES -->
+    <div class="sidebar-section">
+      <div id="props-panel">
+        <div class="prop-header">
+          <span class="prop-title">Proprietà</span>
+          <span id="props-badge">—</span>
+        </div>
+
+        <div id="node-props">
+          <div class="prop-row">
+            <label class="prop-label">Testo blocco</label>
+            <input type="text" class="prop-input" id="prop-label" placeholder="Testo..." oninput="liveEditLabel(this.value)">
+          </div>
+          <div id="props-edges-section">
+            <div class="section-title" style="margin-top:4px">Frecce uscenti</div>
+            <div id="props-edges-list"></div>
+          </div>
+        </div>
+
+        <div id="edge-props" style="display:none">
+          <div class="prop-row">
+            <label class="prop-label">Etichetta freccia</label>
+            <input type="text" class="prop-input" id="prop-edge-label" placeholder="es. Sì / No" oninput="liveEditEdgeLabel(this.value)">
+          </div>
+          <div id="edge-info-text"></div>
+        </div>
+      </div>
+      <div id="no-selection">Seleziona un blocco o una freccia per modificarne le proprietà</div>
+    </div>
+
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-area">
+    <div id="empty-state">
+      <div class="es-icon">⬡</div>
+      <div class="es-title">Canvas vuoto</div>
+      <div class="es-sub">Inserisci il primo blocco dalla barra laterale</div>
+    </div>
+    <div id="pan-layer">
+      <div id="mermaid-container">
+        <div id="mermaid-output"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'default',
+  flowchart: { curve: 'basis', useMaxWidth: false, htmlLabels: true },
+  themeVariables: {
+    primaryColor: '#ffffff',
+    primaryTextColor: '#1a1814',
+    primaryBorderColor: '#2563eb',
+    lineColor: '#4b5563',
+    secondaryColor: '#f5f4f0',
+    tertiaryColor: '#eff6ff',
+    edgeLabelBackground: '#f5f4f0',
+    fontSize: '14px',
+  }
+});
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let nodes = [], edges = [], nc = 0;
+let selNode = null, selEdge = null;
+let connectMode = false, connectFrom = null, connectTo = null;
+let deleteMode = false, deleteFrom = null, deleteTo = null;
+let insertMode = false, insertFrom = null, insertTo = null;
+let history = [], future = [];
+
+// Pan
+let panX = 0, panY = 0;
+let isPanning = false, panStartX = 0, panStartY = 0, panOriginX = 0, panOriginY = 0;
+let pointerMoved = false;
+
+// ─── HISTORY ─────────────────────────────────────────────────────────────────
+function push() {
+  history.push({ n: JSON.stringify(nodes), e: JSON.stringify(edges), nc });
+  future = [];
+  if (history.length > 80) history.shift();
+  updateHistBtns();
+}
+function undo() {
+  if (!history.length) return;
+  future.push({ n: JSON.stringify(nodes), e: JSON.stringify(edges), nc });
+  const s = history.pop();
+  nodes = JSON.parse(s.n); edges = JSON.parse(s.e); nc = s.nc;
+  selNode = null; selEdge = null;
+  updateHistBtns(); render();
+}
+function redo() {
+  if (!future.length) return;
+  history.push({ n: JSON.stringify(nodes), e: JSON.stringify(edges), nc });
+  const s = future.pop();
+  nodes = JSON.parse(s.n); edges = JSON.parse(s.e); nc = s.nc;
+  selNode = null; selEdge = null;
+  updateHistBtns(); render();
+}
+function updateHistBtns() {
+  document.getElementById('undo-btn').disabled = history.length === 0;
+  document.getElementById('redo-btn').disabled = future.length === 0;
+}
+
+// ─── MERMAID CODE ─────────────────────────────────────────────────────────────
+const WORDS_PER_LINE = 3; // max words before wrapping
+
+function esc(s) { return (s||'').replace(/"/g,'&quot;').replace(/[<>]/g,''); }
+
+// Wrap label text: insert <br/> every WORDS_PER_LINE words
+function wrapLabel(text) {
+  const words = (text||' ').trim().split(/\s+/);
+  const lines = [];
+  for (let i = 0; i < words.length; i += WORDS_PER_LINE) {
+    lines.push(words.slice(i, i + WORDS_PER_LINE).join(' '));
+  }
+  return lines.map(l => esc(l)).join('<br/>');
+}
+
+function nodeShape(n) {
+  const l = wrapLabel(n.label || ' ');
+  if (n.type==='circle')  return `${n.id}(["${l}"])`;
+  if (n.type==='diamond') return `${n.id}{"${l}"}`;
+  return `${n.id}["${l}"]`;
+}
+function buildCode(forExport) {
+  let c = 'flowchart TD\n';
+  nodes.forEach(n => { c += `  ${nodeShape(n)}\n`; });
+  edges.forEach(e => {
+    const l = e.label ? `|"${esc(e.label)}"|` : '';
+    c += `  ${e.from} -->${l} ${e.to}\n`;
+  });
+  if (!forExport) {
+    if (selNode) c += `  style ${selNode} stroke:#f59e0b,stroke-width:3px,fill:#fffbeb\n`;
+    if (connectFrom) c += `  style ${connectFrom} stroke:#16a34a,stroke-width:3px,fill:#f0fdf4\n`;
+    if (connectTo) c += `  style ${connectTo} stroke:#10b981,stroke-width:3px,fill:#dcfce7\n`;
+    if (deleteFrom) c += `  style ${deleteFrom} stroke:#dc2626,stroke-width:3px,fill:#fef2f2\n`;
+    if (deleteTo) c += `  style ${deleteTo} stroke:#ef4444,stroke-width:3px,fill:#fee2e2\n`;
+    if (insertFrom) c += `  style ${insertFrom} stroke:#2563eb,stroke-width:3px,fill:#eff6ff\n`;
+    if (insertTo) c += `  style ${insertTo} stroke:#3b82f6,stroke-width:3px,fill:#dbeafe\n`;
+  }
+  return c;
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+let renderTimer = null;
+async function render() {
+  updateEmptyState();
+  updatePropsPanel();
+  updateParentSelect();
+  applyPan();
+  if (!nodes.length) { document.getElementById('mermaid-output').innerHTML=''; return; }
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(async () => {
+    try {
+      const { svg } = await mermaid.render('mg'+Date.now(), buildCode(false));
+      document.getElementById('mermaid-output').innerHTML = svg;
+      attachListeners();
+    } catch(e) { console.error(e); }
+  }, 50);
+}
+function updateEmptyState() {
+  document.getElementById('empty-state').classList.toggle('hidden', nodes.length>0);
+}
+function applyPan() {
+  document.getElementById('pan-layer').style.transform = `translate(${panX}px,${panY}px)`;
+}
+
+// ─── LISTENERS ───────────────────────────────────────────────────────────────
+function attachListeners() {
+  const svg = document.querySelector('#mermaid-output svg');
+  if (!svg) return;
+  svg.style.maxWidth = 'none';
+  svg.style.display = 'block';
+
+  // Nodes
+  svg.querySelectorAll('.node').forEach(el => {
+    const m = (el.id||'').match(/flowchart-([^-]+)/);
+    if (!m) return;
+    const id = m[1];
+    if (!nodes.find(n=>n.id===id)) return;
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', ev => {
+      if (pointerMoved) return;
+      ev.stopPropagation();
+      handleNodeClick(id);
+    });
+  });
+
+  // Background deselect
+  svg.addEventListener('click', ev => {
+    if (pointerMoved) return;
+    const t = ev.target;
+    const onNode = t.closest('.node') || t.closest('.edgePath') || t.closest('.edgeLabel');
+    if (!onNode) deselectAll();
+  });
+}
+
+// ─── NODE CLICK ───────────────────────────────────────────────────────────────
+function handleNodeClick(id) {
+  if (insertMode) {
+    if (insertFrom === null) {
+      // Step 1: pick source
+      insertFrom = id;
+      document.getElementById('insert-step-text').textContent = 'Passo 2: clicca il blocco destinazione';
+      setModeHint('↕ Clicca il blocco destinazione — ESC per annullare');
+      render(); return;
+    }
+    // Step 2: pick destination
+    if (id === insertFrom) { exitInsertMode(); return; }
+    insertTo = id;
+    const edge = edges.find(e=>e.from===insertFrom && e.to===insertTo);
+    if (!edge) {
+      alert('Nessun collegamento diretto tra questi due blocchi.'); return;
+    }
+    // Show options to insert
+    document.getElementById('insert-step-text').textContent = `Inserisci tra ${nodes.find(n=>n.id===insertFrom)?.label} e ${nodes.find(n=>n.id===insertTo)?.label}`;
+    document.getElementById('insert-hint').style.display = 'block';
+    document.getElementById('insert-shape-btns').style.opacity = '1';
+    document.getElementById('insert-shape-btns').style.pointerEvents = '';
+    setModeHint('↕ Scegli il tipo di blocco e il testo nella sidebar');
+    render(); return;
+  }
+
+  if (deleteMode) {
+    if (deleteFrom === null) {
+      // Step 1: pick source
+      deleteFrom = id;
+      document.getElementById('delete-step-text').textContent = 'Passo 2: clicca il blocco destinazione';
+      setModeHint('🗑 Clicca il blocco destinazione — ESC per annullare');
+      render(); return;
+    }
+    // Step 2: pick destination
+    if (id === deleteFrom) { exitDeleteMode(); return; }
+    deleteTo = id;
+    const edge = edges.find(e=>e.from===deleteFrom && e.to===deleteTo);
+    if (!edge) {
+      alert('Nessun collegamento diretto tra questi due blocchi.'); return;
+    }
+    render(); // Show both colored
+    push();
+    edges = edges.filter(e => e !== edge);
+    exitDeleteMode();
+    return;
+  }
+
+  if (!connectMode) { selectNode(id); return; }
+
+  if (connectFrom === null) {
+    // Step 1: pick source
+    connectFrom = id;
+    const src = nodes.find(n=>n.id===id);
+    const arrowWrap = document.getElementById('connect-arrow-wrap');
+    arrowWrap.style.display = (src && src.type==='diamond') ? 'block' : 'none';
+    document.getElementById('connect-step-text').textContent = 'Passo 2: clicca il blocco destinazione';
+    setModeHint('🔗 Clicca il blocco destinazione — ESC per annullare');
+    render(); return;
+  }
+
+  // Step 2: pick destination
+  if (id === connectFrom) { exitConnectMode(); return; }
+  connectTo = id;
+  if (edges.find(e=>e.from===connectFrom && e.to===connectTo)) {
+    alert('Collegamento già esistente.'); exitConnectMode(); return;
+  }
+  render(); // Show both colored
+  push();
+  const src = nodes.find(n=>n.id===connectFrom);
+  const label = (src && src.type==='diamond')
+    ? document.getElementById('connect-arrow-input').value.trim()
+    : '';
+  edges.push({ from: connectFrom, to: connectTo, label });
+  exitConnectMode();
+}
+
+// ─── CONNECT MODE ─────────────────────────────────────────────────────────────
+function toggleConnectMode() {
+  if (connectMode) { exitConnectMode(); return; }
+  if (!nodes.length) { alert('Aggiungi prima almeno un nodo.'); return; }
+  connectMode = true; connectFrom = null;
+  document.getElementById('connect-btn').classList.add('active');
+  document.getElementById('connect-panel').classList.add('visible');
+  document.getElementById('connect-step-text').textContent = 'Passo 1: clicca il blocco di partenza';
+  document.getElementById('connect-arrow-wrap').style.display = 'none';
+  document.getElementById('connect-arrow-input').value = '';
+  setModeHint('🔗 Clicca il blocco di partenza — ESC per annullare');
+  render();
+}
+function exitConnectMode() {
+  connectMode = false; connectFrom = null; connectTo = null;
+  document.getElementById('connect-btn').classList.remove('active');
+  document.getElementById('connect-panel').classList.remove('visible');
+  document.getElementById('connect-arrow-wrap').style.display = 'none';
+  document.getElementById('connect-arrow-input').value = '';
+  document.getElementById('mode-hint').classList.remove('visible');
+  render();
+}
+function toggleDeleteMode() {
+  if (deleteMode) { exitDeleteMode(); return; }
+  if (!edges.length) { alert('Nessun collegamento da eliminare.'); return; }
+  deleteMode = true; deleteFrom = null; deleteTo = null;
+  document.getElementById('delete-btn').classList.add('active');
+  document.getElementById('delete-panel').classList.add('visible');
+  document.getElementById('delete-step-text').textContent = 'Passo 1: clicca il blocco di partenza';
+  setModeHint('🗑 Clicca il blocco di partenza — ESC per annullare');
+  render();
+}
+function exitDeleteMode() {
+  deleteMode = false; deleteFrom = null; deleteTo = null;
+  document.getElementById('delete-btn').classList.remove('active');
+  document.getElementById('delete-panel').classList.remove('visible');
+  document.getElementById('mode-hint').classList.remove('visible');
+  render();
+}
+function setModeHint(txt) {
+  const el = document.getElementById('mode-hint');
+  el.textContent = txt;
+  el.classList.add('visible');
+}
+
+// ─── ADD BLOCK ────────────────────────────────────────────────────────────────
+function addBlock(type) {
+  const label = document.getElementById('new-block-input').value.trim() || 'Nodo';
+  const pid = document.getElementById('parent-select').value;
+  const parentNode = nodes.find(n=>n.id===pid);
+
+  // Arrow label only allowed from diamond parents — fix bug
+  const arrowLabel = (parentNode && parentNode.type==='diamond')
+    ? document.getElementById('new-arrow-input').value.trim()
+    : '';
+
+  push();
+  const id = 'N'+(++nc);
+  nodes.push({ id, type, label });
+  if (pid) edges.push({ from: pid, to: id, label: arrowLabel });
+
+  // Keep selection on diamond parent; otherwise select new node
+  selNode = (parentNode && parentNode.type==='diamond') ? pid : id;
+  selEdge = null;
+
+  document.getElementById('new-block-input').value = '';
+  document.getElementById('new-arrow-input').value = '';
+  render();
+}
+
+// ─── PARENT SELECT ────────────────────────────────────────────────────────────
+function updateParentSelect() {
+  const sel = document.getElementById('parent-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Nodo isolato —</option>';
+  nodes.forEach(n => {
+    const o = document.createElement('option');
+    o.value = n.id; o.textContent = `[${n.id}] ${n.label}`;
+    sel.appendChild(o);
+  });
+  // Restore value
+  if (selNode && nodes.find(n=>n.id===selNode)) sel.value = selNode;
+  else if (cur && nodes.find(n=>n.id===cur)) sel.value = cur;
+  onParentChange();
+}
+function onParentChange() {
+  const pid = document.getElementById('parent-select').value;
+  const pn = nodes.find(n=>n.id===pid);
+  document.getElementById('arrow-label-wrap').style.display =
+    (pn && pn.type==='diamond') ? 'block' : 'none';
+}
+
+// ─── INSERT BETWEEN (inline mode) ────────────────────────────────────────────
+function toggleInsertMode() {
+  if (insertMode) { exitInsertMode(); return; }
+  if (!nodes.length) { alert('Aggiungi prima almeno un nodo.'); return; }
+  insertMode = true; insertFrom = null; insertTo = null;
+  document.getElementById('insert-btn').classList.add('active');
+  document.getElementById('insert-panel').classList.add('visible');
+  document.getElementById('insert-text-input').value = '';
+  document.getElementById('insert-step-text').textContent = 'Passo 1: clicca il blocco di partenza';
+  document.getElementById('insert-hint').style.display = 'none';
+  document.getElementById('insert-shape-btns').style.opacity = '0.4';
+  document.getElementById('insert-shape-btns').style.pointerEvents = 'none';
+  setModeHint('↕ Clicca il blocco di partenza — ESC per annullare');
+  render();
+}
+function exitInsertMode() {
+  insertMode = false; insertFrom = null; insertTo = null;
+  document.getElementById('insert-btn').classList.remove('active');
+  document.getElementById('insert-panel').classList.remove('visible');
+  document.getElementById('mode-hint').classList.remove('visible');
+  render();
+}
+function confirmInsertInline(type) {
+  if (!insertMode) return;
+  if (insertFrom === null || insertTo === null) { alert('Prima seleziona i due blocchi.'); return; }
+  const text = document.getElementById('insert-text-input').value.trim() || 'Nuovo';
+  const edge = edges.find(e=>e.from===insertFrom && e.to===insertTo);
+  if (!edge) { alert('Collegamento non trovato.'); return; }
+  
+  push();
+  const id = 'N'+(++nc);
+  nodes.push({ id, type, label: text });
+  const edgeIdx = edges.indexOf(edge);
+  edges.splice(edgeIdx, 1,
+    { from: edge.from, to: id, label: edge.label },
+    { from: id, to: edge.to, label: '' }
+  );
+  selNode = id; selEdge = null;
+  exitInsertMode();
+}
+
+// ─── DELETE ───────────────────────────────────────────────────────────────────
+function deleteSelected() {
+  if (selEdge !== null) {
+    push(); edges.splice(selEdge,1); selEdge=null; render(); return;
+  }
+  if (!selNode) { alert('Seleziona un nodo o una freccia da eliminare.'); return; }
+  const toDelete = new Set();
+  cascadeCollect(selNode, toDelete);
+  if (toDelete.size > 1) {
+    const labels = [...toDelete].map(id=>nodes.find(n=>n.id===id)?.label||id);
+    if (!confirm(`Verranno eliminati anche:\n${labels.slice(1).join(', ')}\n\nContinuare?`)) return;
+  }
+  push();
+  toDelete.forEach(id => {
+    nodes = nodes.filter(n=>n.id!==id);
+    edges = edges.filter(e=>e.from!==id && e.to!==id);
+  });
+  selNode=null; render();
+}
+function cascadeCollect(id, vis) {
+  vis.add(id);
+  edges.filter(e=>e.from===id).forEach(e => {
+    if (vis.has(e.to)) return;
+    const otherParents = edges.filter(x=>x.to===e.to && !vis.has(x.from));
+    if (!otherParents.length) cascadeCollect(e.to, vis);
+  });
+}
+
+// ─── SELECTION ────────────────────────────────────────────────────────────────
+function selectNode(id) { selNode=id; selEdge=null; render(); }
+function selectEdge(idx) {
+  if (idx<0||idx>=edges.length) return;
+  selEdge=idx; selNode=null;
+  // If in insert mode, pick this edge as the target
+  if (insertMode) {
+    insertEdgeIdx = idx;
+    updateInsertPanel();
+    setModeHint('↕ Freccia selezionata — scegli il tipo di blocco nella sidebar');
+  }
+  render();
+}
+function deselectAll() {
+  if (connectMode) { exitConnectMode(); return; }
+  if (deleteMode) { exitDeleteMode(); return; }
+  if (insertMode) { exitInsertMode(); return; }
+  selNode=null; selEdge=null; render();
+}
+
+// ─── PROPERTIES ───────────────────────────────────────────────────────────────
+function updatePropsPanel() {
+  const panel = document.getElementById('props-panel');
+  const noSel = document.getElementById('no-selection');
+  const nodeProps = document.getElementById('node-props');
+  const edgeProps = document.getElementById('edge-props');
+  const badge = document.getElementById('props-badge');
+
+  if (selNode) {
+    const n = nodes.find(x=>x.id===selNode); if(!n) return;
+    panel.classList.add('visible'); noSel.style.display='none';
+    nodeProps.style.display='block'; edgeProps.style.display='none';
+    badge.className=''; badge.textContent = {rect:'Processo',circle:'Cerchio',diamond:'Decisione'}[n.type]||n.type;
+
+    const lbl = document.getElementById('prop-label');
+    if (document.activeElement!==lbl) lbl.value = n.label||'';
+
+    const outEdges = edges.filter(e=>e.from===selNode);
+    const sec = document.getElementById('props-edges-section');
+    const list = document.getElementById('props-edges-list');
+    if (outEdges.length) {
+      sec.classList.add('visible');
+      if (!list.contains(document.activeElement)) {
+        list.innerHTML='';
+        outEdges.forEach(e => {
+          const toN = nodes.find(x=>x.id===e.to);
+          const row = document.createElement('div');
+          row.className='edge-prop-row';
+          row.innerHTML=`<label>→ ${(toN?.label||e.to).substring(0,12)}</label>
+            <input type="text" class="edge-prop-input" placeholder="Etichetta"
+              value="${(e.label||'').replace(/"/g,'&quot;')}"
+              data-from="${e.from}" data-to="${e.to}">`;
+          row.querySelector('input').addEventListener('input',function(){
+            const edge=edges.find(x=>x.from===this.dataset.from&&x.to===this.dataset.to);
+            if(edge){edge.label=this.value;render();}
+          });
+          list.appendChild(row);
+        });
+      }
+    } else { sec.classList.remove('visible'); }
+
+  } else if (selEdge!==null && edges[selEdge]) {
+    const e = edges[selEdge];
+    const fn = nodes.find(n=>n.id===e.from);
+    const tn = nodes.find(n=>n.id===e.to);
+    panel.classList.add('visible'); noSel.style.display='none';
+    nodeProps.style.display='none'; edgeProps.style.display='block';
+    badge.className='edge'; badge.textContent='Freccia';
+    const lbl = document.getElementById('prop-edge-label');
+    if (document.activeElement!==lbl) lbl.value = e.label||'';
+    document.getElementById('edge-info-text').textContent =
+      `${fn?.label||e.from}  →  ${tn?.label||e.to}`;
+
+  } else {
+    panel.classList.remove('visible'); noSel.style.display='';
+  }
+}
+function liveEditLabel(val) {
+  if (!selNode) return;
+  const n=nodes.find(x=>x.id===selNode); if(n){n.label=val||' ';render();}
+}
+function liveEditEdgeLabel(val) {
+  if (selEdge===null) return;
+  const e=edges[selEdge]; if(e){e.label=val;render();}
+}
+
+// ─── MODALS (kept for any future use) ────────────────────────────────────────
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){
+  document.getElementById(id).classList.remove('open');
+  document.getElementById(id).querySelectorAll('input').forEach(i=>i.value='');
+}
+document.querySelectorAll('.overlay').forEach(o=>{
+  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
+});
+
+// ─── KEYBOARD ─────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const inp = ['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName);
+  if ((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();return;}
+  if ((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='Z'))){e.preventDefault();redo();return;}
+  if (e.key==='Escape'){
+    document.querySelectorAll('.overlay.open').forEach(o=>o.classList.remove('open'));
+    if (connectMode) exitConnectMode();
+    else if (deleteMode) exitDeleteMode();
+    else if (insertMode) exitInsertMode();
+    else deselectAll();
+    return;
+  }
+  if ((e.key==='Delete'||e.key==='Backspace')&&!inp) deleteSelected();
+});
+
+// ─── PAN ──────────────────────────────────────────────────────────────────────
+const canvasArea = document.getElementById('canvas-area');
+
+// Returns the minimum distance (px) from point (cx,cy) to the nearest edge of a DOMRect
+function distToRect(cx, cy, r) {
+  const dx = Math.max(r.left - cx, 0, cx - r.right);
+  const dy = Math.max(r.top  - cy, 0, cy - r.bottom);
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+// Only start panning when click is sufficiently far from any node/edge bounding box
+const PAN_MIN_DIST = 30; // px
+function isFarFromElements(cx, cy) {
+  const svg = document.querySelector('#mermaid-output svg');
+  if (!svg) return true;
+  const els = svg.querySelectorAll('.node, .edgePath, .edgeLabel');
+  for (const el of els) {
+    const r = el.getBoundingClientRect();
+    if (distToRect(cx, cy, r) < PAN_MIN_DIST) return false;
+  }
+  return true;
+}
+
+canvasArea.addEventListener('mousedown', ev => {
+  // Only pan with middle mouse button (wheel)
+  if (ev.button !== 1) return;
+  isPanning=true; pointerMoved=false;
+  panStartX=ev.clientX; panStartY=ev.clientY;
+  panOriginX=panX; panOriginY=panY;
+  canvasArea.classList.add('panning');
+  ev.preventDefault();
+});
+document.addEventListener('mousemove', ev => {
+  if (!isPanning) return;
+  const dx=ev.clientX-panStartX, dy=ev.clientY-panStartY;
+  if (Math.abs(dx)>3||Math.abs(dy)>3) pointerMoved=true;
+  panX=panOriginX+dx; panY=panOriginY+dy;
+  applyPan();
+});
+document.addEventListener('mouseup', ev => {
+  if (isPanning && ev.button === 1) {
+    isPanning=false;
+    canvasArea.classList.remove('panning');
+  }
+  // Always reset pointer flag after any mouse up
+  requestAnimationFrame(()=>{ pointerMoved=false; });
+});
+
+// Prevent default middle-click behavior (like scroll) during pan
+document.addEventListener('auxclick', ev => {
+  if (ev.button === 1) ev.preventDefault();
+});
+
+// ─── SAVE / LOAD ──────────────────────────────────────────────────────────────
+async function saveJSON() {
+  const name = document.getElementById('diagram-name').value.trim()||'flowchart';
+  const content = JSON.stringify({nodes,edges,nc,name},null,2);
+  if (window.showSaveFilePicker) {
+    try {
+      const fh = await window.showSaveFilePicker({
+        suggestedName: name+'.json',
+        types:[{description:'JSON',accept:{'application/json':['.json']}}]
+      });
+      const ws = await fh.createWritable();
+      await ws.write(content); await ws.close(); return;
+    } catch(e){if(e.name==='AbortError')return;}
+  }
+  dlBlob(name+'.json',content,'application/json');
+}
+function loadJSON(){document.getElementById('file-input').click();}
+function loadJSONFile(e) {
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const d=JSON.parse(ev.target.result);
+      push(); nodes=d.nodes||[]; edges=d.edges||[]; nc=d.nc||nodes.length;
+      if(d.name) document.getElementById('diagram-name').value=d.name;
+      selNode=null; selEdge=null; render();
+    }catch{alert('File non valido.');}
+  };
+  r.readAsText(f); e.target.value='';
+}
+
+async function saveSVG() {
+  if (!nodes.length){alert('Nessun diagramma da esportare.');return;}
+  let svgStr;
+  try {
+    const {svg} = await mermaid.render('exp'+Date.now(), buildCode(true));
+    const tmp=document.createElement('div'); tmp.innerHTML=svg;
+    const svgEl=tmp.querySelector('svg');
+    svgEl.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    const st=document.createElementNS('http://www.w3.org/2000/svg','style');
+    st.textContent=`* { font-family: sans-serif; } .node rect,.node circle,.node polygon { fill:#fff; stroke:#2563eb; stroke-width:1.5px; } .edgePath path { stroke:#4b5563; stroke-width:1.5px; fill:none; } .edgeLabel { background:#f5f4f0; }`;
+    svgEl.insertBefore(st,svgEl.firstChild);
+    svgStr=new XMLSerializer().serializeToString(svgEl);
+  } catch(err){alert('Errore esportazione SVG.');return;}
+  const name=document.getElementById('diagram-name').value.trim()||'flowchart';
+  if (window.showSaveFilePicker) {
+    try {
+      const fh=await window.showSaveFilePicker({
+        suggestedName:name+'.svg',
+        types:[{description:'SVG',accept:{'image/svg+xml':['.svg']}}]
+      });
+      const ws=await fh.createWritable();
+      await ws.write(svgStr); await ws.close(); return;
+    } catch(e){if(e.name==='AbortError')return;}
+  }
+  dlBlob(name+'.svg',svgStr,'image/svg+xml');
+}
+
+function dlBlob(name,content,mime){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type:mime}));
+  a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>

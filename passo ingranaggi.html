@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calcolo Passo Cremagliera</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f7f6;
+        }
+        .container {
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 100%;
+        }
+        h2 { color: #2c3e50; text-align: center; }
+        .input-group { margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 0.5rem; color: #7f8c8d; }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        input:focus { border-color: #3498db; outline: none; }
+        .result {
+            background-color: #ecf0f1;
+            padding: 1rem;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2980b9;
+        }
+        .formula {
+            font-size: 0.8rem;
+            text-align: center;
+            color: #bdc3c7;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Calcolo Passo</h2>
+    <div class="input-group">
+        <label for="modulo">Inserisci il Modulo (m):</label>
+        <input type="number" id="modulo" placeholder="Esempio: 2" step="0.01" oninput="calcola()">
+    </div>
+    <div class="result" id="risultato">
+        Passo (p): 0.00 mm
+    </div>
+    <div class="formula">
+        Formula: p = m &times; &pi;
+    </div>
+</div>
+
+<script>
+    function calcola() {
+        const m = document.getElementById('modulo').value;
+        const risultato = document.getElementById('risultato');
+        
+        if (m > 0) {
+            const p = m * Math.PI;
+            risultato.innerText = `Passo (p): ${p.toFixed(4)} mm`;
+        } else {
+            risultato.innerText = "Passo (p): 0.00 mm";
+        }
+    }
+</script>
+
+</body>
+</html>
