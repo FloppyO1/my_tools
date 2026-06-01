@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1a1a1a">
+<meta name="description" content="Advanced Serial Monitor - Web Serial API terminal">
+
+<title>Serial Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ===== TOKENS ===== */
+:root {
+  /* Claude-style dark palette */
+  --bg-base:    #1a1a1a;
+  --bg-surface: #242424;
+  --bg-raised:  #2e2e2e;
+  --bg-hover:   #383838;
+  --bg-active:  #404040;
+
+  --border-sub:  rgba(255,255,255,0.06);
+  --border-def:  rgba(255,255,255,0.10);
+  --border-em:   rgba(255,255,255,0.18);
+
+  --text-pri:  #ececec;
+  --text-sec:  #a0a0a0;
+  --text-ter:  #606060;
+
+  /* Accents */
+  --accent:      #d97706;   /* Claude amber */
+  --accent-dim:  rgba(217,119,6,0.15);
+  --accent-h:    #b45309;
+
+  --c-rx:        #60a5fa;   /* blue */
+  --c-rx-dim:    rgba(96,165,250,0.10);
+  --c-tx:        #4ade80;   /* green */
+  --c-tx-dim:    rgba(74,222,128,0.10);
+  --c-sys:       #fbbf24;
+  --c-err:       #f87171;
+
+  --connected:   #22c55e;
+
+  --mono: 'JetBrains Mono', 'Cascadia Code', monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 10px;
+
+  --toolbar-h: 38px;
+}
+
+[data-theme="light"] {
+  --bg-base:    #f5f5f4;
+  --bg-surface: #ffffff;
+  --bg-raised:  #f0ede8;
+  --bg-hover:   #e8e4df;
+  --bg-active:  #e0dbd4;
+
+  --border-sub:  rgba(0,0,0,0.05);
+  --border-def:  rgba(0,0,0,0.09);
+  --border-em:   rgba(0,0,0,0.16);
+
+  --text-pri:  #1c1917;
+  --text-sec:  #57534e;
+  --text-ter:  #a8a29e;
+
+  --accent:      #b45309;
+  --accent-dim:  rgba(180,83,9,0.10);
+  --accent-h:    #92400e;
+
+  --c-rx:        #2563eb;
+  --c-rx-dim:    rgba(37,99,235,0.08);
+  --c-tx:        #16a34a;
+  --c-tx-dim:    rgba(22,163,74,0.08);
+  --c-sys:       #d97706;
+  --c-err:       #dc2626;
+
+  --connected:   #16a34a;
+}
+
+/* ===== RESET ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--sans);
+  background: var(--bg-base);
+  color: var(--text-pri);
+  font-size: 13px;
+  line-height: 1.5;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bg-active); }
+
+/* ===== APP SHELL ===== */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 480px;
+}
+
+/* ===== TITLEBAR ===== */
+#titlebar {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 14px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-def);
+  gap: 10px;
+  flex-shrink: 0;
+  z-index: 20;
+}
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-pri);
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+.app-logo .logo-icon {
+  width: 22px; height: 22px;
+  background: var(--accent-dim);
+  border: 1px solid rgba(217,119,6,0.3);
+  border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.tb-sep { flex: 1; }
+.tb-vr { width: 1px; height: 18px; background: var(--border-def); flex-shrink: 0; }
+
+/* Status pill */
+#status-pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border-def);
+  background: var(--bg-raised);
+  font-size: 11.5px;
+  color: var(--text-sec);
+  white-space: nowrap;
+}
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text-ter);
+  transition: background 0.3s, box-shadow 0.3s;
+  flex-shrink: 0;
+}
+.dot.on { background: var(--connected); box-shadow: 0 0 5px var(--connected); }
+
+/* Icon buttons in titlebar */
+.icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: var(--r-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-sec);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.icon-btn:hover { background: var(--bg-hover); color: var(--text-pri); }
+.icon-btn svg { pointer-events: none; }
+
+/* ===== TOOLBAR AREA (two rows) ===== */
+#toolbar-area {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-def);
+  flex-shrink: 0;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  height: var(--toolbar-h);
+  padding: 0 14px;
+  gap: 6px;
+  flex-wrap: wrap; /* graceful wrap on resize */
+  overflow: hidden;
+}
+.toolbar-row + .toolbar-row {
+  border-top: 1px solid var(--border-sub);
+}
+
+.row-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-ter);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  white-space: nowrap;
+  min-width: 36px;
+}
+
+.vr { width: 1px; height: 20px; background: var(--border-def); flex-shrink: 0; margin: 0 2px; }
+.spacer { flex: 1; }
+
+/* ===== FORM CONTROLS ===== */
+select, input[type=text] {
+  height: 26px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-em);
+  border-radius: var(--r-sm);
+  color: var(--text-pri);
+  font-family: var(--sans);
+  font-size: 12px;
+  padding: 0 7px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23808080' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  padding-right: 22px;
+}
+select:focus, input[type=text]:focus { border-color: var(--accent); background: var(--bg-hover); outline: none; }
+
+.ctrl-group {
+  display: flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+}
+.ctrl-lbl {
+  font-size: 11px;
+  color: var(--text-sec);
+  white-space: nowrap;
+}
+
+/* Width presets for selects */
+.w-baud  { width: 88px; }
+.w-bits  { width: 52px; }
+.w-par   { width: 62px; }
+.w-mode  { width: 64px; }
+.w-eol   { width: 76px; }
+
+/* ===== BUTTONS ===== */
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-em);
+  background: var(--bg-raised);
+  color: var(--text-pri);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn:hover  { background: var(--bg-hover); }
+.btn:active { transform: scale(0.97); background: var(--bg-active); }
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent-h);
+  color: #fff;
+}
+.btn.primary:hover { background: var(--accent-h); }
+
+.btn.danger {
+  background: rgba(248,113,113,0.1);
+  border-color: rgba(248,113,113,0.3);
+  color: var(--c-err);
+}
+.btn.danger:hover { background: rgba(248,113,113,0.18); }
+
+.btn svg { flex-shrink: 0; }
+
+/* Toggle switch */
+.tog-wrap {
+  display: flex; align-items: center; gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11.5px;
+  color: var(--text-sec);
+  white-space: nowrap;
+}
+.tog-wrap input { display: none; }
+.tog-track {
+  width: 26px; height: 14px;
+  border-radius: 7px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-em);
+  position: relative;
+  transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+}
+.tog-wrap input:checked + .tog-track { background: var(--accent); border-color: var(--accent-h); }
+.tog-thumb {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+.tog-wrap input:checked + .tog-track .tog-thumb { left: 14px; }
+
+/* ===== OUTPUT ===== */
+#output-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  overflow: hidden;
+}
+#output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+/* Log lines */
+.ll {
+  display: grid;
+  grid-template-columns: 90px 34px 46px 1fr;
+  gap: 6px;
+  align-items: baseline;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  transition: background 0.1s;
+}
+.ll:hover { background: var(--bg-surface); }
+/* No timestamp mode */
+.ll.no-ts { grid-template-columns: 34px 46px 1fr; }
+/* Sys line (no mode tag) */
+.ll.sys-line { grid-template-columns: 90px 34px 1fr; }
+.ll.sys-line.no-ts { grid-template-columns: 34px 1fr; }
+
+.l-ts   { color: var(--text-ter); font-size: 10.5px; }
+.l-dir  { font-size: 10.5px; font-weight: 600; }
+.l-dir.rx { color: var(--c-rx); }
+.l-dir.tx { color: var(--c-tx); }
+.l-dir.sys { color: var(--c-sys); }
+.l-mode {
+  font-size: 9.5px;
+  font-family: var(--mono);
+  color: var(--text-ter);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-def);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 1.6;
+  text-align: center;
+  align-self: center;
+}
+.l-data { color: var(--text-pri); word-break: break-all; }
+.l-data.rx { color: var(--c-rx); }
+.l-data.tx { color: var(--c-tx); }
+.l-data.sys { color: var(--c-sys); font-style: italic; }
+
+/* ===== STATUS BAR ===== */
+#statusbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 3px 14px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-def);
+  font-size: 11px;
+  color: var(--text-ter);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 22px;
+}
+.sb-item { display: flex; align-items: center; gap: 4px; }
+.sb-item strong { color: var(--text-sec); font-weight: 500; }
+#sb-port { margin-left: auto; color: var(--text-sec); }
+
+/* ===== SEND ROW ===== */
+#send-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-def);
+  flex-shrink: 0;
+}
+#send-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 0 10px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-em);
+  border-radius: var(--r-md);
+  color: var(--text-pri);
+  outline: none;
+  transition: border-color 0.15s;
+  background-image: none;
+}
+#send-input:focus { border-color: var(--accent); }
+#send-input::placeholder { color: var(--text-ter); }
+#send-btn { height: 30px; padding: 0 14px; border-radius: var(--r-md); }
+
+/* ===== COMPAT WARNING ===== */
+#compat-warn {
+  display: none;
+  position: fixed; inset: 0;
+  background: var(--bg-base);
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; text-align: center; padding: 32px;
+  z-index: 999;
+}
+#compat-warn.show { display: flex; }
+#compat-warn h2 { font-size: 20px; }
+#compat-warn p  { color: var(--text-sec); max-width: 440px; line-height: 1.7; font-size: 14px; }
+#compat-warn a  { color: var(--accent); }
+
+/* ===== MODAL ===== */
+.modal-bg {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-em);
+  border-radius: var(--r-lg);
+  width: min(620px, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 26px 30px 30px;
+}
+.modal-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+.modal h2 { font-size: 16px; font-weight: 600; }
+.modal .modal-desc { color: var(--text-sec); font-size: 12.5px; margin-top: 2px; }
+.modal h3 {
+  font-size: 10.5px; font-weight: 600; color: var(--text-ter);
+  text-transform: uppercase; letter-spacing: 0.6px;
+  margin: 18px 0 7px;
+}
+.modal p, .modal li { font-size: 13px; color: var(--text-sec); line-height: 1.7; }
+.modal ul { padding-left: 18px; }
+.modal ul li { margin-bottom: 3px; }
+code {
+  font-family: var(--mono);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-def);
+  padding: 1px 5px; border-radius: 4px;
+  font-size: 11.5px; color: var(--text-pri);
+}
+.badge {
+  display: inline-block; font-size: 10px; font-weight: 600;
+  padding: 1px 6px; border-radius: 4px; font-family: var(--mono);
+  vertical-align: middle;
+}
+.badge.rx { background: var(--c-rx-dim); color: var(--c-rx); }
+.badge.tx { background: var(--c-tx-dim); color: var(--c-tx); }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 700px) {
+  .hide-sm { display: none !important; }
+  .ctrl-lbl { display: none; }
+  #sb-port { display: none; }
+}
+@media (max-width: 540px) {
+  .hide-xs { display: none !important; }
+  .row-label { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Compat warning -->
+<div id="compat-warn">
+  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" color="#f87171"><path d="M12 9v4m0 4h.01M5.07 19H19a2 2 0 001.75-2.97L13.75 4a2 2 0 00-3.5 0L3.25 16.03A2 2 0 005.07 19z"/></svg>
+  <h2>Browser not supported</h2>
+  <p>This app requires the <strong>Web Serial API</strong>, available in <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Opera</strong> (v89+) on desktop.<br><br>Please open this file in one of those browsers.</p>
+</div>
+
+<!-- APP -->
+<div id="app">
+
+  <!-- TITLEBAR -->
+  <div id="titlebar">
+    <div class="app-logo">
+      <div class="logo-icon">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8l2 2-2 2M13 12h3"/></svg>
+      </div>
+      Advanced Serial Monitor
+    </div>
+
+    <div class="tb-sep"></div>
+
+    <div id="status-pill">
+      <span class="dot" id="dot"></span>
+      <span id="status-text">Disconnected</span>
+    </div>
+
+    <div class="tb-vr"></div>
+
+    <button class="icon-btn" id="theme-btn" title="Toggle dark / light theme" aria-label="Toggle theme">
+      <svg id="theme-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
+    <button class="icon-btn" id="help-btn" title="Help" aria-label="Open help">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3m.08 4h.01"/></svg>
+    </button>
+  </div>
+
+  <!-- TOOLBAR AREA -->
+  <div id="toolbar-area">
+
+    <!-- ROW 1 — PORT / CONNECTION -->
+    <div class="toolbar-row">
+      <span class="row-label">Port</span>
+      <div class="vr hide-xs"></div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-lbl">Baud</span>
+        <select id="baud-sel" class="w-baud">
+          <option>110</option><option>300</option><option>600</option>
+          <option>1200</option><option>2400</option><option>4800</option>
+          <option>9600</option><option>14400</option><option>19200</option>
+          <option>28800</option><option>38400</option><option>56000</option>
+          <option selected>115200</option><option>128000</option>
+          <option>256000</option><option>500000</option>
+          <option>1000000</option><option>2000000</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-lbl">Data</span>
+        <select id="data-bits" class="w-bits">
+          <option selected>8</option><option>7</option><option>6</option><option>5</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-lbl">Stop</span>
+        <select id="stop-bits" class="w-bits">
+          <option selected>1</option><option>2</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-lbl">Parity</span>
+        <select id="parity-sel" class="w-par">
+          <option value="none">None</option>
+          <option value="even">Even</option>
+          <option value="odd">Odd</option>
+        </select>
+      </div>
+
+      <div class="vr"></div>
+
+      <button class="btn primary" id="connect-btn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Connect
+      </button>
+    </div>
+
+    <!-- ROW 2 — DISPLAY / VIEW -->
+    <div class="toolbar-row">
+      <span class="row-label">View</span>
+      <div class="vr hide-xs"></div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-lbl">RX display</span>
+        <select id="rx-mode" class="w-mode">
+          <option>Text</option><option selected>HEX</option>
+          <option>DEC</option><option>BIN</option>
+        </select>
+      </div>
+
+      <div class="ctrl-group">
+        <span class="ctrl-lbl">TX display</span>
+        <select id="tx-display-mode" class="w-mode">
+          <option selected>Text</option><option>HEX</option>
+          <option>DEC</option><option>BIN</option>
+        </select>
+      </div>
+
+      <div class="vr"></div>
+
+      <label class="tog-wrap" title="Auto-scroll to new data">
+        <input type="checkbox" id="autoscroll" checked>
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        Auto-scroll
+      </label>
+
+      <label class="tog-wrap hide-sm" title="Show timestamps">
+        <input type="checkbox" id="show-ts" checked>
+        <span class="tog-track"><span class="tog-thumb"></span></span>
+        Timestamps
+      </label>
+
+      <div class="spacer"></div>
+
+      <button class="btn" id="export-btn" title="Export log (Ctrl+E)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+
+      <button class="btn" id="clear-btn" title="Clear log (Ctrl+L)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6m4-6v6"/><path d="M9 6V4h6v2"/></svg>
+        Clear
+      </button>
+    </div>
+
+  </div><!-- /toolbar-area -->
+
+  <!-- OUTPUT -->
+  <div id="output-area">
+    <div id="output" aria-live="polite" aria-label="Serial data log"></div>
+  </div>
+
+  <!-- STATUS BAR -->
+  <div id="statusbar">
+    <span class="sb-item">RX <strong id="sb-rx">0 B</strong></span>
+    <span class="sb-item">TX <strong id="sb-tx">0 B</strong></span>
+    <span class="sb-item">Lines <strong id="sb-lines">0</strong></span>
+    <span id="sb-port">—</span>
+  </div>
+
+  <!-- SEND ROW -->
+  <div id="send-row">
+    <select id="send-mode" class="w-mode" title="TX input format">
+      <option selected>Text</option><option>HEX</option>
+      <option>DEC</option><option>BIN</option>
+    </select>
+    <input type="text" id="send-input" placeholder="Type data to send… (Enter to send)" autocomplete="off" spellcheck="false">
+    <select id="eol-sel" class="w-eol" title="Line ending appended to each send">
+      <option value="none">No EOL</option>
+      <option value="nl">NL  \n</option>
+      <option value="cr">CR  \r</option>
+      <option value="crnl" selected>CR+LF</option>
+    </select>
+    <button class="btn primary" id="send-btn">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      Send
+    </button>
+  </div>
+
+</div><!-- /app -->
+
+<!-- HELP MODAL -->
+<div class="modal-bg" id="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 id="help-title">Help &amp; Usage Guide</h2>
+        <p class="modal-desc">Advanced Serial Monitor — Web Serial API Edition</p>
+      </div>
+      <button class="btn" id="close-modal">✕ Close</button>
+    </div>
+
+    <h3>Requirements</h3>
+    <p>Works in <strong>Chrome, Edge,</strong> or <strong>Opera</strong> (desktop, v89+). Requires a USB-to-serial adapter or a device with native USB serial (Arduino, ESP32, STM32…).</p>
+
+    <h3>Connecting — Port row</h3>
+    <ul>
+      <li>Set <strong>Baud Rate</strong>, <strong>Data bits</strong>, <strong>Stop bits</strong>, and <strong>Parity</strong> to match your device.</li>
+      <li>Click <strong>Connect</strong> — the browser shows a port picker dialog.</li>
+      <li>The status pill turns green when the port is open.</li>
+      <li>Click <strong>Disconnect</strong> to close the port safely.</li>
+    </ul>
+
+    <h3>Display modes — View row</h3>
+    <ul>
+      <li><strong>RX display</strong> — controls how <em>received</em> bytes are shown. Changing it re-renders the entire log instantly.</li>
+      <li><strong>TX display</strong> — controls how <em>sent</em> bytes are shown in the log. Independent from RX.</li>
+      <li><strong>Text</strong> — decoded UTF-8 string.</li>
+      <li><strong>HEX</strong> — space-separated uppercase hex, e.g. <code>41 42 43</code>.</li>
+      <li><strong>DEC</strong> — decimal integers, e.g. <code>65 66 67</code>.</li>
+      <li><strong>BIN</strong> — 8-bit binary, e.g. <code>01000001 01000010</code>.</li>
+    </ul>
+
+    <h3>Sending data — Send row</h3>
+    <ul>
+      <li>Select the <strong>TX input format</strong> (left dropdown) — this controls how you <em>type</em> the data.</li>
+      <li>In <strong>HEX</strong>: type space-separated hex bytes: <code>DE AD BE EF</code></li>
+      <li>In <strong>DEC</strong>: type space-separated decimals: <code>65 66 67</code></li>
+      <li>In <strong>BIN</strong>: type space-separated 8-bit groups: <code>01000001 01000010</code></li>
+      <li>Choose a <strong>line ending</strong> — CR+LF is standard for most Arduino sketches.</li>
+      <li>Press <strong>Enter</strong> or click <strong>Send</strong>.</li>
+    </ul>
+
+    <h3>Log colours</h3>
+    <p>
+      <span class="badge rx">RX</span> blue — received data &nbsp;
+      <span class="badge tx">TX</span> green — sent data &nbsp;
+      amber italic — system messages
+    </p>
+
+    <h3>Options</h3>
+    <ul>
+      <li><strong>Auto-scroll</strong> — pins the view to the latest line.</li>
+      <li><strong>Timestamps</strong> — shows HH:MM:SS.mmm per entry.</li>
+      <li><strong>Clear</strong> — wipes log and resets counters.</li>
+      <li><strong>Export</strong> — saves the full log as a <code>.txt</code> file.</li>
+    </ul>
+
+    <h3>Keyboard shortcuts</h3>
+    <ul>
+      <li><code>Enter</code> — send data</li>
+      <li><code>↑ / ↓</code> — navigate command history (no consecutive duplicates)</li>
+      <li><code>Ctrl + L</code> — clear log</li>
+      <li><code>Ctrl + E</code> — export log</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+// ======================================================
+//  COMPAT CHECK
+// ======================================================
+if (!('serial' in navigator)) {
+  document.getElementById('compat-warn').classList.add('show');
+}
+
+// ======================================================
+//  STATE
+// ======================================================
+const state = {
+  port: null,
+  reader: null,
+  connected: false,
+  log: [],      // { dir:'rx'|'tx'|'sys', bytes:Uint8Array|null, txInputMode:string|null, sysMsg:string|null, ts:number }
+  rxBytes: 0,
+  txBytes: 0,
+  theme: localStorage.getItem('sm-theme') || 'dark',
+  // Command history — no consecutive duplicates
+  cmdHistory: [],   // array of { cmd:string, mode:string }
+  historyIdx: -1,   // current position while navigating (-1 = not navigating)
+  historyDraft: '', // saves the current typed text when the user starts navigating up
+  historyDraftMode: null,
+};
+
+// ======================================================
+//  DOM REFS
+// ======================================================
+const $  = id => document.getElementById(id);
+const output      = $('output');
+const connectBtn  = $('connect-btn');
+const sendBtn     = $('send-btn');
+const sendInput   = $('send-input');
+const rxModeEl    = $('rx-mode');
+// tx-display-mode: how TX entries LOOK in the log
+const txDisplayEl = $('tx-display-mode');
+// send-mode: what FORMAT the user types in the input box
+const sendModeEl  = $('send-mode');
+const autoscroll  = $('autoscroll');
+const showTs      = $('show-ts');
+
+// ======================================================
+//  THEME
+// ======================================================
+function applyTheme(t) {
+  state.theme = t;
+  localStorage.setItem('sm-theme', t);
+  document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : '');
+  const icon = $('theme-icon');
+  if (t === 'light') {
+    icon.innerHTML = '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+  } else {
+    icon.innerHTML = '<circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>';
+  }
+}
+applyTheme(state.theme);
+$('theme-btn').onclick = () => applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+
+// ======================================================
+//  CONVERSIONS
+// ======================================================
+function bytesToStr(bytes, mode) {
+  if (!bytes || !bytes.length) return '';
+  switch (mode) {
+    case 'Text':
+      try { return new TextDecoder('utf-8',{fatal:false}).decode(bytes); }
+      catch { return Array.from(bytes).map(b=>String.fromCharCode(b)).join(''); }
+    case 'HEX':
+      return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0').toUpperCase()).join(' ');
+    case 'DEC':
+      return Array.from(bytes).join(' ');
+    case 'BIN':
+      return Array.from(bytes).map(b=>b.toString(2).padStart(8,'0')).join(' ');
+  }
+  return '';
+}
+
+function strToBytes(s, mode) {
+  try {
+    switch (mode) {
+      case 'Text': return new TextEncoder().encode(s);
+      case 'HEX': {
+        const parts = s.trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return new Uint8Array(0);
+        return new Uint8Array(parts.map(h => {
+          const v = parseInt(h, 16);
+          if (isNaN(v) || v < 0 || v > 255) throw new Error('Invalid HEX byte: ' + h);
+          return v;
+        }));
+      }
+      case 'DEC': {
+        const parts = s.trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return new Uint8Array(0);
+        return new Uint8Array(parts.map(d => {
+          const v = parseInt(d, 10);
+          if (isNaN(v) || v < 0 || v > 255) throw new Error('Invalid DEC byte: ' + d);
+          return v;
+        }));
+      }
+      case 'BIN': {
+        const parts = s.trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return new Uint8Array(0);
+        return new Uint8Array(parts.map(b => {
+          if (!/^[01]{1,8}$/.test(b)) throw new Error('Invalid BIN group: ' + b);
+          return parseInt(b, 2);
+        }));
+      }
+    }
+  } catch(e) {
+    sysLog('⚠ ' + e.message);
+    return null;
+  }
+  return new Uint8Array(0);
+}
+
+function getEol() {
+  switch ($('eol-sel').value) {
+    case 'nl':   return new Uint8Array([0x0A]);
+    case 'cr':   return new Uint8Array([0x0D]);
+    case 'crnl': return new Uint8Array([0x0D, 0x0A]);
+    default:     return new Uint8Array(0);
+  }
+}
+
+// ======================================================
+//  RENDERING
+// ======================================================
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  return (n/1048576).toFixed(2) + ' MB';
+}
+function fmtTs(ts) {
+  const d = new Date(ts);
+  return [d.getHours(),d.getMinutes(),d.getSeconds()]
+    .map(x=>x.toString().padStart(2,'0')).join(':')
+    + '.' + d.getMilliseconds().toString().padStart(3,'0');
+}
+
+function buildLine(entry) {
+  const ts    = showTs.checked;
+  const isSys = entry.dir === 'sys';
+  const div   = document.createElement('div');
+  div.className = 'll' + (isSys ? ' sys-line' : '') + (ts ? '' : ' no-ts');
+
+  // Timestamp cell
+  if (ts) {
+    const tEl = document.createElement('span');
+    tEl.className = 'l-ts';
+    tEl.textContent = fmtTs(entry.ts);
+    div.appendChild(tEl);
+  }
+
+  // Direction cell
+  const dEl = document.createElement('span');
+  dEl.className = 'l-dir ' + (entry.dir || 'sys');
+  dEl.textContent = (entry.dir || 'sys').toUpperCase();
+  div.appendChild(dEl);
+
+  if (!isSys) {
+    // Mode badge
+    const displayMode = entry.dir === 'rx' ? rxModeEl.value : txDisplayEl.value;
+    const mEl = document.createElement('span');
+    mEl.className = 'l-mode';
+    mEl.textContent = displayMode;
+    div.appendChild(mEl);
+
+    // Data — store the raw bytes; display using current mode
+    const xEl = document.createElement('span');
+    xEl.className = 'l-data ' + entry.dir;
+    xEl.textContent = bytesToStr(entry.bytes, displayMode);
+    div.appendChild(xEl);
+  } else {
+    // Sys message spans remaining columns
+    const xEl = document.createElement('span');
+    xEl.className = 'l-data sys';
+    xEl.textContent = entry.sysMsg;
+    div.appendChild(xEl);
+  }
+
+  return div;
+}
+
+// Full re-render (called when display mode or timestamp toggle changes)
+function refreshOutput() {
+  output.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const e of state.log) frag.appendChild(buildLine(e));
+  output.appendChild(frag);
+  if (autoscroll.checked) output.scrollTop = output.scrollHeight;
+}
+
+// Append one line at the bottom
+function appendLine(entry) {
+  output.appendChild(buildLine(entry));
+  if (autoscroll.checked) output.scrollTop = output.scrollHeight;
+}
+
+function updateStats() {
+  $('sb-rx').textContent    = fmtBytes(state.rxBytes);
+  $('sb-tx').textContent    = fmtBytes(state.txBytes);
+  $('sb-lines').textContent = state.log.length;
+}
+
+// ======================================================
+//  LOG HELPERS
+// ======================================================
+function addEntry(entry) {
+  state.log.push(entry);
+  appendLine(entry);
+  updateStats();
+}
+
+function sysLog(msg) {
+  addEntry({ dir:'sys', bytes:null, txInputMode:null, sysMsg:msg, ts:Date.now() });
+}
+
+// ======================================================
+//  MODE CHANGE LISTENERS
+// ======================================================
+rxModeEl.addEventListener('change', refreshOutput);
+txDisplayEl.addEventListener('change', refreshOutput);
+showTs.addEventListener('change', refreshOutput);
+
+// ======================================================
+//  SERIAL — CONNECT / DISCONNECT
+// ======================================================
+async function connect() {
+  if (!('serial' in navigator)) return;
+  try {
+    state.port = await navigator.serial.requestPort();
+    const baud     = parseInt($('baud-sel').value);
+    const dataBits = parseInt($('data-bits').value);
+    const stopBits = parseInt($('stop-bits').value);
+    const parity   = $('parity-sel').value;
+
+    await state.port.open({ baudRate:baud, dataBits, stopBits, parity });
+
+    state.connected = true;
+    connectBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg> Disconnect';
+    connectBtn.classList.replace('primary', 'danger');
+    $('dot').classList.add('on');
+    $('status-text').textContent = 'Connected';
+    const info = state.port.getInfo();
+    const vid  = info.usbVendorId  ? ' VID:' + info.usbVendorId.toString(16).toUpperCase()  : '';
+    const pid  = info.usbProductId ? ' PID:' + info.usbProductId.toString(16).toUpperCase() : '';
+    $('sb-port').textContent = baud + ' baud' + vid + pid;
+
+    sysLog(`✓ Port opened — ${baud} baud  ${dataBits}N${stopBits}  parity:${parity}`);
+    startReadLoop();
+
+  } catch(e) {
+    if (e.name !== 'NotSelectedError') sysLog('✕ ' + e.message);
+  }
+}
+
+async function disconnect() {
+  state.connected = false;
+  if (state.reader) {
+    try { await state.reader.cancel(); } catch {}
+    state.reader = null;
+  }
+  if (state.port) {
+    try { await state.port.close(); } catch {}
+    state.port = null;
+  }
+  connectBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Connect';
+  connectBtn.classList.replace('danger', 'primary');
+  $('dot').classList.remove('on');
+  $('status-text').textContent = 'Disconnected';
+  $('sb-port').textContent = '—';
+  sysLog('— Port closed');
+}
+
+async function startReadLoop() {
+  while (state.port && state.port.readable && state.connected) {
+    state.reader = state.port.readable.getReader();
+    try {
+      while (true) {
+        const { value, done } = await state.reader.read();
+        if (done) break;
+        if (value && value.length) {
+          state.rxBytes += value.length;
+          // Copy value to avoid detached buffer issues
+          const copy = new Uint8Array(value);
+          addEntry({ dir:'rx', bytes:copy, txInputMode:null, sysMsg:null, ts:Date.now() });
+        }
+      }
+    } catch(e) {
+      if (state.connected) sysLog('⚠ Read error: ' + e.message);
+    } finally {
+      try { state.reader.releaseLock(); } catch {}
+    }
+  }
+}
+
+connectBtn.onclick = () => state.connected ? disconnect() : connect();
+
+// ======================================================
+//  SEND
+// ======================================================
+async function sendData() {
+  if (!state.connected) { sysLog('⚠ Not connected'); return; }
+  const inputMode = sendModeEl.value;
+  const raw = sendInput.value;
+  if (!raw.trim()) return;
+
+  const payload = strToBytes(raw, inputMode);
+  if (payload === null) return; // error already logged
+
+  const eol    = getEol();
+  const toSend = new Uint8Array(payload.length + eol.length);
+  toSend.set(payload);
+  toSend.set(eol, payload.length);
+
+  try {
+    const writer = state.port.writable.getWriter();
+    await writer.write(toSend);
+    writer.releaseLock();
+    state.txBytes += toSend.length;
+    // Store raw bytes + the input mode that was used to create them
+    // txDisplayEl controls how they LOOK in the log (independent!)
+    addEntry({ dir:'tx', bytes:toSend, txInputMode:inputMode, sysMsg:null, ts:Date.now() });
+
+    // --- Command history: push only if different from the last entry ---
+    const last = state.cmdHistory[0];
+    if (!last || last.cmd !== raw || last.mode !== inputMode) {
+      state.cmdHistory.unshift({ cmd: raw, mode: inputMode });
+      // Cap history to 200 entries
+      if (state.cmdHistory.length > 200) state.cmdHistory.length = 200;
+    }
+    state.historyIdx = -1;
+    state.historyDraft = '';
+    state.historyDraftMode = null;
+    sendInput.value = '';
+  } catch(e) {
+    sysLog('✕ Send error: ' + e.message);
+  }
+}
+
+sendBtn.onclick = sendData;
+sendInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { sendData(); return; }
+
+  const hist = state.cmdHistory;
+  if (!hist.length) return;
+
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    // Save what the user has typed before navigating
+    if (state.historyIdx === -1) {
+      state.historyDraft = sendInput.value;
+      state.historyDraftMode = sendModeEl.value;
+    }
+    const next = state.historyIdx + 1;
+    if (next < hist.length) {
+      state.historyIdx = next;
+      const entry = hist[next];
+      sendInput.value = entry.cmd;
+      sendModeEl.value = entry.mode;
+      // Move cursor to end
+      sendInput.setSelectionRange(entry.cmd.length, entry.cmd.length);
+    }
+    return;
+  }
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (state.historyIdx <= 0) {
+      // Back to draft
+      state.historyIdx = -1;
+      sendInput.value = state.historyDraft;
+      sendModeEl.value = state.historyDraftMode || sendModeEl.value;
+      sendInput.setSelectionRange(sendInput.value.length, sendInput.value.length);
+    } else {
+      state.historyIdx--;
+      const entry = hist[state.historyIdx];
+      sendInput.value = entry.cmd;
+      sendModeEl.value = entry.mode;
+      sendInput.setSelectionRange(entry.cmd.length, entry.cmd.length);
+    }
+    return;
+  }
+
+  // Any other key: reset navigation so next Up starts fresh
+  state.historyIdx = -1;
+});
+
+// ======================================================
+//  CLEAR / EXPORT
+// ======================================================
+$('clear-btn').onclick = () => {
+  state.log = [];
+  state.rxBytes = 0;
+  state.txBytes = 0;
+  output.innerHTML = '';
+  updateStats();
+};
+
+$('export-btn').onclick = () => {
+  const lines = state.log.map(e => {
+    const ts = fmtTs(e.ts);
+    if (e.dir === 'sys') return `[${ts}] [SYS] ${e.sysMsg}`;
+    const displayMode = e.dir === 'rx' ? rxModeEl.value : txDisplayEl.value;
+    return `[${ts}] [${e.dir.toUpperCase()} ${displayMode}] ${bytesToStr(e.bytes, displayMode)}`;
+  }).join('\n');
+  const blob = new Blob([lines], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'serial-log-' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt';
+  a.click();
+};
+
+// ======================================================
+//  HELP MODAL
+// ======================================================
+$('help-btn').onclick  = () => $('help-modal').classList.add('open');
+$('close-modal').onclick = () => $('help-modal').classList.remove('open');
+$('help-modal').addEventListener('click', e => { if (e.target === $('help-modal')) $('help-modal').classList.remove('open'); });
+
+// ======================================================
+//  KEYBOARD SHORTCUTS
+// ======================================================
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'l') { e.preventDefault(); $('clear-btn').click(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); $('export-btn').click(); }
+});
+
+// ======================================================
+//  STARTUP
+// ======================================================
+sysLog('Advanced Serial Monitor ready — click Connect to select a serial port');
+</script>
+</body>
+</html>
