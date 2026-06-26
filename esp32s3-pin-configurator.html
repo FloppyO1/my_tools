@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="it" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32-S3 WROOM Pin Configurator</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  :root{
+    --accent:#4dabf7;
+    --accent2:#63e6be;
+    --strap:#ffa94d;
+    --conflict:#ff6b6b;
+    --reserved:#495057;
+  }
+  body{
+    background:#0f1115;
+    color:#e9ecef;
+    padding-bottom:4rem;
+  }
+  .navbar-brand small{font-size:.7rem;color:#868e96;display:block;font-weight:400;}
+  .pin-card{
+    background:#181b21;
+    border:1px solid #2b2f36;
+    border-radius:.6rem;
+    padding:.6rem .7rem;
+    height:100%;
+    transition:border-color .15s, box-shadow .15s;
+    position:relative;
+  }
+  .pin-card.cat-strap{border-color:var(--strap);}
+  .pin-card.cat-reserved{border-color:var(--reserved);opacity:.55;}
+  .pin-card.cat-fixed{border-color:var(--accent);}
+  .pin-card.has-conflict{border-color:var(--conflict)!important;box-shadow:0 0 0 2px rgba(255,107,107,.35);}
+  .pin-card.assigned:not(.has-conflict){box-shadow:0 0 0 1px rgba(77,171,247,.25);}
+  .pin-num{
+    font-weight:700;font-size:.95rem;letter-spacing:.02em;
+  }
+  .pin-badges{display:flex;flex-wrap:wrap;gap:.25rem;margin:.3rem 0 .4rem;}
+  .pin-badges .badge{font-size:.62rem;font-weight:500;}
+  .pin-select{font-size:.78rem;padding:.25rem .4rem;}
+  .info-btn{
+    position:absolute;top:.4rem;right:.4rem;
+    width:1.4rem;height:1.4rem;border-radius:50%;
+    border:1px solid #495057;background:#20242b;color:#adb5bd;
+    font-size:.7rem;line-height:1;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+  }
+  .info-btn:hover{background:#2b2f36;color:#fff;}
+  .section-title{
+    font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:#868e96;
+    margin:1.6rem 0 .6rem;display:flex;align-items:center;gap:.5rem;
+  }
+  .section-title::after{content:"";flex:1;height:1px;background:#2b2f36;}
+  .grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.55rem;
+  }
+  .legend-dot{width:.7rem;height:.7rem;border-radius:50%;display:inline-block;margin-right:.3rem;}
+  #criticalAccordion .accordion-button{font-size:.85rem;}
+  #criticalAccordion .accordion-body{font-size:.83rem;}
+  pre#codeOutput{max-height:60vh;overflow:auto;background:#0b0d10;}
+  .toggle-row label{font-size:.78rem;}
+  .small-muted{font-size:.72rem;color:#868e96;}
+  .navbar{border-bottom:1px solid #2b2f36;}
+  .card-disabled-overlay{font-size:.65rem;color:#868e96;}
+  .table thead{color:#868e96;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#2b2f36;border-radius:6px;}
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg px-3 py-2 mb-3">
+  <span class="navbar-brand mb-0">
+    ESP32-S3 WROOM Pin Configurator
+    <small>Mappatura pin, IO MUX / GPIO Matrix, warning hardware</small>
+  </span>
+  <div class="ms-auto d-flex gap-2 flex-wrap">
+    <button class="btn btn-sm btn-outline-light" id="btnLegend" data-bs-toggle="collapse" data-bs-target="#legendBox">Legenda</button>
+    <button class="btn btn-sm btn-outline-warning" id="btnReset">Reset</button>
+    <button class="btn btn-sm btn-outline-info" id="btnImport">Importa JSON</button>
+    <input type="file" id="fileImport" accept="application/json" class="d-none">
+    <button class="btn btn-sm btn-outline-info" id="btnExport">Esporta JSON</button>
+    <button class="btn btn-sm btn-primary" id="btnCode">Genera codice</button>
+  </div>
+</nav>
+
+<div class="container-fluid px-3">
+
+  <div class="collapse mb-3" id="legendBox">
+    <div class="card card-body bg-dark border-secondary small">
+      <div class="d-flex flex-wrap gap-3">
+        <span><span class="legend-dot" style="background:#181b21;border:1px solid #2b2f36"></span>Libero</span>
+        <span><span class="legend-dot" style="background:#181b21;border:1px solid var(--accent)"></span>Assegnato</span>
+        <span><span class="legend-dot" style="background:#181b21;border:1px solid var(--strap)"></span>Strapping pin (attenzione al boot)</span>
+        <span><span class="legend-dot" style="background:#181b21;border:1px solid var(--accent)"></span>Funzione fissa (USB / JTAG / Console)</span>
+        <span><span class="legend-dot" style="background:#181b21;border:1px solid var(--reserved);opacity:.6"></span>Riservato (Flash / PSRAM interna)</span>
+        <span><span class="legend-dot" style="background:#181b21;border:1px solid var(--conflict)"></span>Conflitto (stesso segnale su 2+ pin)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global options -->
+  <div class="card card-body bg-dark border-secondary mb-3">
+    <div class="row gy-2 align-items-end toggle-row">
+      <div class="col-12 col-lg-3">
+        <label class="form-label mb-1">Variante modulo</label>
+        <select id="cfgVariant" class="form-select form-select-sm">
+          <option value="quad">WROOM-1 / WROOM-1U &mdash; Quad Flash (+ Quad PSRAM opz.)</option>
+          <option value="octal">WROOM-2 / WROOM-2U &mdash; Octal Flash + Octal PSRAM</option>
+        </select>
+      </div>
+      <div class="col-12 col-lg-3">
+        <label class="form-label mb-1">Modalità USB (pin 19/20)</label>
+        <select id="cfgUsb" class="form-select form-select-sm">
+          <option value="serialjtag" selected>USB Serial/JTAG nativo (default)</option>
+          <option value="otg">USB OTG Full-Speed</option>
+          <option value="none">Nessuna (pin liberi)</option>
+        </select>
+      </div>
+      <div class="col-6 col-lg-2">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="cfgConsole" checked>
+          <label class="form-check-label" for="cfgConsole">Console UART0 (43/44)</label>
+        </div>
+      </div>
+      <div class="col-6 col-lg-2">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="cfgJtag">
+          <label class="form-check-label" for="cfgJtag">JTAG hardware (39&ndash;42)</label>
+        </div>
+      </div>
+      <div class="col-6 col-lg-2">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="cfgWifi" checked>
+          <label class="form-check-label" for="cfgWifi">Wi-Fi attivo (impatta ADC2)</label>
+        </div>
+      </div>
+    </div>
+    <div class="small-muted mt-2">Questi interruttori cambiano <em>quando</em> un pin è disponibile: riflettono cosa il firmware attiva realmente (USB nativo, JTAG via pin dedicati, console seriale, stack Wi-Fi).</div>
+  </div>
+
+  <!-- Conflicts / warnings -->
+  <div id="alertsBox"></div>
+
+  <!-- Critical pins accordion -->
+  <div class="accordion mb-4" id="criticalAccordion"></div>
+
+  <div id="gridContainer"></div>
+
+  <div class="section-title">Riepilogo assegnazioni</div>
+  <div class="table-responsive">
+    <table class="table table-dark table-sm align-middle" id="summaryTable">
+      <thead><tr><th>Pin</th><th>Funzione</th><th>Note</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- Modal: pin info -->
+<div class="modal fade" id="pinInfoModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title" id="pinInfoTitle">GPIOx</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="pinInfoBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: code output -->
+<div class="modal fade" id="codeModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content bg-dark border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title">Codice generato (Arduino-style #define)</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="codeOutput" class="p-3 rounded border border-secondary"><code></code></pre>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button class="btn btn-sm btn-outline-light" id="btnCopyCode">Copia</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/* =========================================================================
+   DATI HARDWARE
+   Fonti: ESP32-S3 Series Datasheet v2.2 (Table 2-9 Peripheral Pin Assignment,
+   capitoli Strapping Pins / Boot Mode Control / VDD_SPI), ESP32-S3 Hardware
+   Design Guidelines, ESP-IDF GPIO docs, datasheet ESP32-S3-WROOM-2/2U.
+   ========================================================================= */
+
+// Famiglie di periferiche instradabili tramite GPIO Matrix (qualsiasi pin libero)
+const FAMILIES = [
+  {key:'uart0', label:'UART0', signals:['TX','RX','RTS','CTS']},
+  {key:'uart1', label:'UART1', signals:['TX','RX','RTS','CTS']},
+  {key:'uart2', label:'UART2', signals:['TX','RX','RTS','CTS']},
+  {key:'i2c0',  label:'I2C0',  signals:['SDA','SCL']},
+  {key:'i2c1',  label:'I2C1',  signals:['SDA','SCL']},
+  {key:'spi2',  label:'SPI2 (FSPI)', signals:['SCLK','MOSI','MISO','CS0','CS1','WP','HD']},
+  {key:'i2s0',  label:'I2S0',  signals:['BCLK','WS','DOUT','DIN','MCLK']},
+  {key:'twai',  label:'TWAI (CAN)', signals:['TX','RX']},
+  {key:'ledc',  label:'LEDC / PWM', signals:['CH0','CH1','CH2','CH3','CH4','CH5','CH6','CH7']},
+];
+
+function sigValue(famKey, sig){ return famKey + '_' + sig; }
+function sigLabel(famKey, sig){
+  const f = FAMILIES.find(f=>f.key===famKey);
+  return (f ? f.label : famKey) + ' ' + sig;
+}
+
+// Pin 0-21 + 26-48 (su ESP32-S3 i GPIO 22-25 non esistono)
+const PINS = [];
+
+function addPin(gpio, opts){
+  PINS.push(Object.assign({
+    gpio, adc:null, touch:null, strap:null, fixed:null, reserved:null,
+    notes:[], rtc: gpio<=21
+  }, opts));
+}
+
+// --- 0-21: pin "core" con ADC1/ADC2 + Touch fissi via IO MUX -------------
+addPin(0, {strap:{
+  title:'Strapping: modalità di boot',
+  text:'Seleziona la modalità di boot del chip. Pull-up interno di default: HIGH = boot normale da Flash SPI; LOW = modalità download (programmazione). Se riusi questo pin come GPIO, assicurati che non venga tirato basso involontariamente durante l\'accensione o il reset (es. da un pulsante collegato male, o da un periferico che pilota il pin all\'avvio).'
+}});
+addPin(1, {adc:{unit:1,ch:0}, touch:1});
+addPin(2, {adc:{unit:1,ch:1}, touch:2});
+addPin(3, {adc:{unit:1,ch:2}, touch:3, strap:{
+  title:'Strapping: sorgente segnale JTAG',
+  text:'Floating (nessun pull interno) di default. Ne determina la sorgente del segnale JTAG, ma solo se l\'eFuse EFUSE_STRAP_JTAG_SEL è programmato — condizione non comune. Se non stai selezionando intenzionalmente la sorgente JTAG, lascialo flottante o pilotalo attivamente (non lasciarlo in alta impedenza con un pull debole/rumoroso) per evitare letture incoerenti al reset.'
+}});
+addPin(4, {adc:{unit:1,ch:3}, touch:4});
+addPin(5, {adc:{unit:1,ch:4}, touch:5});
+addPin(6, {adc:{unit:1,ch:5}, touch:6});
+addPin(7, {adc:{unit:1,ch:6}, touch:7});
+addPin(8, {adc:{unit:1,ch:7}, touch:8});
+addPin(9, {adc:{unit:1,ch:8}, touch:9});
+addPin(10,{adc:{unit:1,ch:9}, touch:10});
+addPin(11,{adc:{unit:2,ch:0}, touch:11});
+addPin(12,{adc:{unit:2,ch:1}, touch:12});
+addPin(13,{adc:{unit:2,ch:2}, touch:13});
+addPin(14,{adc:{unit:2,ch:3}, touch:14});
+addPin(15,{adc:{unit:2,ch:4}, notes:['Può fungere da oscillatore esterno a 32&nbsp;kHz (XTAL_32K_P) per l\'RTC, in alternativa all\'uso come GPIO/ADC/UART0 RTS.']});
+addPin(16,{adc:{unit:2,ch:5}, notes:['Può fungere da oscillatore esterno a 32&nbsp;kHz (XTAL_32K_N) per l\'RTC, in alternativa all\'uso come GPIO/ADC/UART0 CTS.']});
+addPin(17,{adc:{unit:2,ch:6}, notes:['In alcune configurazioni eFuse può ricevere i messaggi di boot ROM in alternativa a U0TXD.']});
+addPin(18,{adc:{unit:2,ch:7}});
+addPin(19,{adc:{unit:2,ch:8}, fixed:{
+  type:'usb', title:'Pin fisso: USB D-',
+  text:'Pin dedicato D- del controller USB integrato. Usato dal USB Serial/JTAG (console + programmazione via USB nativo) e/o da USB OTG Full-Speed, secondo la modalità USB selezionata sopra. Liberalo solo se non ti serve alcuna funzione USB nativa: perderai console/flashing via USB.'
+}});
+addPin(20,{adc:{unit:2,ch:9}, fixed:{
+  type:'usb', title:'Pin fisso: USB D+',
+  text:'Pin dedicato D+ del controller USB integrato. Vedi nota su GPIO19 (USB D-).'
+}});
+addPin(21,{notes:['Dopo il reset questo pin transita a LOW più lentamente rispetto alla maggior parte dei GPIO: tienine conto se lo usi per segnali sincroni critici subito dopo il boot.']});
+
+// --- 26-32: sempre riservati a Flash SPI (+ eventuale PSRAM Quad) --------
+[26,27,28,29,30,31,32].forEach(g=>addPin(g, {reserved:'always',
+  notes:['Collegato internamente al bus SPI0/1 (Flash, ed eventuale PSRAM Quad con CS dedicato). Non disponibile sui moduli WROOM, qualsiasi variante.']
+}));
+
+// --- 33-37: riservati solo sui moduli Octal (WROOM-2/2U) -----------------
+[33,34,35,36,37].forEach(g=>addPin(g, {reserved:'octal',
+  notes:['Su moduli con Flash/PSRAM Octal in-package (WROOM-2/2U) è collegato al bus SPI dedicato (SPIIO4-7 / SPIDQS) e non è disponibile. Libero sui moduli Quad (WROOM-1/1U).']
+}));
+
+// --- 38: libero, in alcune varianti Octal alternativa per WP -------------
+addPin(38, {notes:['In alcune configurazioni Octal può essere usato come percorso alternativo per il segnale WP del bus SPI dedicato alla PSRAM; in uso normale è un GPIO libero.']});
+
+// --- 39-42: JTAG hardware di default (MTCK/MTDO/MTDI/MTMS) --------------
+addPin(39, {fixed:{type:'jtag', title:'Pin fisso: JTAG MTCK', text:'Pin JTAG hardware predefinito (MTCK). Serve solo per debug via JTAG su pin dedicati (alternativa al JTAG-su-USB). Libero per altri usi se non fai debug hardware su questi pin.'},
+  notes:['Dopo il reset questo pin va HIGH, al contrario della maggior parte dei GPIO che vanno LOW: attenzione se lo leggi come input subito dopo il boot.']});
+addPin(40, {fixed:{type:'jtag', title:'Pin fisso: JTAG MTDO', text:'Pin JTAG hardware predefinito (MTDO). Vedi nota su GPIO39.'}});
+addPin(41, {fixed:{type:'jtag', title:'Pin fisso: JTAG MTDI', text:'Pin JTAG hardware predefinito (MTDI). Vedi nota su GPIO39.'}});
+addPin(42, {fixed:{type:'jtag', title:'Pin fisso: JTAG MTMS', text:'Pin JTAG hardware predefinito (MTMS). Vedi nota su GPIO39.'},
+  notes:['Dopo il reset questo pin transita a LOW più lentamente rispetto alla maggior parte dei GPIO.']});
+
+// --- 43/44: console UART0 di default -------------------------------------
+addPin(43, {fixed:{type:'uart0', title:'Pin fisso: U0TXD (console)', text:'Pin console seriale di default. Usato per i messaggi di boot ROM, i log standard e la programmazione via UART0. Liberalo solo se non ti serve la console/log seriale standard.'}});
+addPin(44, {fixed:{type:'uart0', title:'Pin fisso: U0RXD (console)', text:'Pin console seriale di default. Vedi nota su GPIO43.'}});
+
+addPin(45, {strap:{
+  title:'Strapping: tensione VDD_SPI',
+  text:'Seleziona la tensione di alimentazione VDD_SPI per Flash/PSRAM in-package: pull-down interno di default → 0 → 3.3&nbsp;V; se forzato HIGH → 1.8&nbsp;V (a meno che l\'eFuse VDD_SPI_FORCE non renda questo pin ininfluente). Non toccare se non sai esattamente di che tensione ha bisogno la tua memoria: un valore errato può impedire il boot o danneggiare il chip di memoria.'
+}});
+addPin(46, {strap:{
+  title:'Strapping: boot mode + stampa messaggi ROM',
+  text:'Insieme a GPIO0 determina la modalità di boot dopo il rilascio del reset (Boot Mode Control) e abilita/disabilita la stampa dei messaggi ROM. Pull-down interno di default. La combinazione GPIO46=HIGH con GPIO0=LOW non è valida e genera comportamento imprevisto: evitala. Può essere usato sia come ingresso che come uscita in funzionamento normale.'
+}});
+
+addPin(47, {reserved:'octal', notes:['Su moduli Octal (WROOM-2/2U) è usato come clock differenziale SPICLK_P per la Flash/PSRAM in-package. Libero sui moduli Quad (WROOM-1/1U) — spesso usato per LED indirizzabili (es. WS2812) sulle dev board.',
+  'Dopo il reset transita a LOW più lentamente rispetto alla maggior parte dei GPIO.']});
+addPin(48, {reserved:'octal', notes:['Su moduli Octal (WROOM-2/2U) è usato come clock differenziale SPICLK_N per la Flash/PSRAM in-package. Libero sui moduli Quad (WROOM-1/1U).']});
+
+PINS.sort((a,b)=>a.gpio-b.gpio);
+
+/* =========================================================================
+   STATO
+   ========================================================================= */
+let assignments = {};     // gpio -> value string (es. 'uart0_TX', 'gpio_out', 'adc1_0', 'none')
+let cfg = { variant:'quad', usb:'serialjtag', console:true, jtag:false, wifi:true };
+
+PINS.forEach(p=>assignments[p.gpio] = defaultValueFor(p));
+
+function defaultValueFor(p){
+  if(p.fixed) return null; // calcolato dinamicamente in base ai toggle
+  if(p.reserved) return null;
+  return 'none';
+}
+
+/* =========================================================================
+   LOGICA DI DISPONIBILITÀ
+   ========================================================================= */
+function isReservedActive(p){
+  if(p.reserved === 'always') return true;
+  if(p.reserved === 'octal') return cfg.variant === 'octal';
+  return false;
+}
+function isFixedLocked(p){
+  if(!p.fixed) return false;
+  if(p.fixed.type === 'usb')  return cfg.usb !== 'none';
+  if(p.fixed.type === 'jtag') return cfg.jtag === true;
+  if(p.fixed.type === 'uart0')return cfg.console === true;
+  return false;
+}
+function fixedLockValue(p){
+  if(p.fixed.type === 'usb')  return cfg.usb === 'otg' ? 'usb_otg' : 'usb_serialjtag';
+  if(p.fixed.type === 'jtag')return 'jtag_hw';
+  if(p.fixed.type === 'uart0')return 'uart0_console';
+  return 'none';
+}
+
+// Costruisce le opzioni selezionabili per un pin, in base allo stato attuale
+function buildOptions(p){
+  const groups = [];
+  groups.push({label:null, opts:[{value:'none', label:'— Non usato —'}]});
+
+  if(p.adc) groups.push({label:'Analogico', opts:[{value:`adc${p.adc.unit}_${p.adc.ch}`, label:`ADC${p.adc.unit}_CH${p.adc.ch}`}]});
+  if(p.touch) groups.push({label:'Touch', opts:[{value:`touch_${p.touch}`, label:`TOUCH${p.touch}`}]});
+  if(p.gpio===15) groups.push({label:'Oscillatore', opts:[{value:'xtal32k_p', label:'XTAL_32K_P (32kHz ext.)'}]});
+  if(p.gpio===16) groups.push({label:'Oscillatore', opts:[{value:'xtal32k_n', label:'XTAL_32K_N (32kHz ext.)'}]});
+
+  groups.push({label:'Digitale', opts:[
+    {value:'gpio_out', label:'GPIO uscita digitale'},
+    {value:'gpio_in',  label:'GPIO ingresso digitale'},
+  ]});
+
+  FAMILIES.forEach(f=>{
+    groups.push({label:f.label, opts:f.signals.map(s=>({value:sigValue(f.key,s), label:`${f.label} ${s}`}))});
+  });
+
+  return groups;
+}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+const gridContainer = document.getElementById('gridContainer');
+const alertsBox = document.getElementById('alertsBox');
+const criticalAccordion = document.getElementById('criticalAccordion');
+
+function pinCategoryClass(p){
+  if(isReservedActive(p)) return 'cat-reserved';
+  if(p.strap) return 'cat-strap';
+  if(p.fixed && isFixedLocked(p)) return 'cat-fixed';
+  return '';
+}
+
+function computeSignalUsage(){
+  const usage = {}; // value -> [gpio,...]  (solo per segnali "univoci" assegnabili dall'utente via GPIO Matrix)
+  PINS.forEach(p=>{
+    if(isReservedActive(p)) return;
+    // I pin bloccati da una funzione fissa globale (USB D-/D+, le 4 linee JTAG, U0TXD/U0RXD)
+    // condividono per natura la stessa funzione su più pin: non è un conflitto creato dall'utente,
+    // quindi vanno esclusi dal controllo duplicati.
+    if(p.fixed && isFixedLocked(p)) return;
+    const val = assignments[p.gpio];
+    if(!val || val==='none' || val==='gpio_out' || val==='gpio_in') return;
+    usage[val] = usage[val] || [];
+    usage[val].push(p.gpio);
+  });
+  return usage;
+}
+
+function render(){
+  const usage = computeSignalUsage();
+  const conflictPins = new Set();
+  Object.entries(usage).forEach(([val,gpios])=>{
+    if(gpios.length>1) gpios.forEach(g=>conflictPins.add(g));
+  });
+
+  renderAlerts(conflictPins, usage);
+  renderCriticalAccordion();
+  renderGrid(conflictPins);
+  renderSummary(conflictPins);
+}
+
+function renderAlerts(conflictPins, usage){
+  let html = '';
+  if(conflictPins.size>0){
+    const lines = Object.entries(usage).filter(([,g])=>g.length>1)
+      .map(([val,g])=>`<li><code>${humanSignal(val)}</code> assegnato a GPIO ${g.join(', GPIO ')}</li>`).join('');
+    html += `<div class="alert alert-danger"><strong>Conflitto pin:</strong> lo stesso segnale è assegnato a più pin contemporaneamente.<ul class="mb-0 mt-1">${lines}</ul></div>`;
+  }
+  // ADC2 + WiFi
+  if(cfg.wifi){
+    const adc2InUse = PINS.filter(p=>p.adc && p.adc.unit===2 && assignments[p.gpio]===`adc2_${p.adc.ch}`);
+    if(adc2InUse.length){
+      html += `<div class="alert alert-warning"><strong>ADC2 + Wi-Fi attivo:</strong> il driver Wi-Fi usa internamente ADC2; le letture su ADC2 (GPIO ${adc2InUse.map(p=>p.gpio).join(', ')}) possono risultare instabili o bloccarsi quando il Wi-Fi è in funzione. Se possibile preferisci un canale ADC1.</div>`;
+    }
+  }
+  alertsBox.innerHTML = html;
+}
+
+function humanSignal(val){
+  if(val.startsWith('adc')) { const [,u,c]=val.match(/adc(\d)_(\d+)/)||[]; return `ADC${u}_CH${c}`; }
+  if(val.startsWith('touch_')) return 'TOUCH'+val.split('_')[1];
+  if(val==='usb_serialjtag') return 'USB Serial/JTAG';
+  if(val==='usb_otg') return 'USB OTG';
+  if(val==='jtag_hw') return 'JTAG hardware';
+  if(val==='uart0_console') return 'Console UART0';
+  if(val==='xtal32k_p') return 'XTAL_32K_P';
+  if(val==='xtal32k_n') return 'XTAL_32K_N';
+  const [fam,...rest] = val.split('_');
+  return sigLabel(fam, rest.join('_'));
+}
+
+function renderCriticalAccordion(){
+  const items = [];
+  PINS.forEach(p=>{
+    if(p.strap) items.push({gpio:p.gpio, title:`GPIO${p.gpio} — ${p.strap.title}`, text:p.strap.text, tone:'warning'});
+  });
+  [26,27,28,29,30,31,32].forEach(()=>{}); // no-op, reserved-always handled below once
+  if(true){
+    items.push({gpio:'26-32', title:'GPIO26&ndash;32 — Riservati a Flash SPI', text:'Collegati internamente al bus SPI0/1 (Flash integrata ed eventuale PSRAM Quad). Non disponibili su nessun modulo WROOM.', tone:'secondary'});
+  }
+  items.push({gpio:'33-37,47,48', title:'GPIO33&ndash;37, 47, 48 — Riservati solo su moduli Octal', text:'Su WROOM-2/2U (Flash/PSRAM Octal) sono collegati al bus dedicato e non disponibili. Su WROOM-1/1U (Quad) sono GPIO liberi.', tone:'secondary'});
+  PINS.filter(p=>p.fixed).forEach(p=>{
+    items.push({gpio:p.gpio, title:`GPIO${p.gpio} — ${p.fixed.title}`, text:p.fixed.text, tone:'info'});
+  });
+
+  criticalAccordion.innerHTML = `
+    <div class="accordion-item bg-dark border-secondary">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed bg-dark text-light" type="button" data-bs-toggle="collapse" data-bs-target="#criticalBody">
+          ⚠️ Pin critici e precauzioni hardware (${items.length})
+        </button>
+      </h2>
+      <div id="criticalBody" class="accordion-collapse collapse">
+        <div class="accordion-body">
+          ${items.map(it=>`<div class="alert alert-${it.tone} py-2"><strong>GPIO${typeof it.gpio==='number'?it.gpio:it.gpio}</strong> &mdash; ${it.title.split('—')[1]||''}<div class="small mt-1">${it.text}</div></div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderGrid(conflictPins){
+  const sections = [
+    {title:'Strapping pin (richiedono attenzione al boot)', filter:p=>!!p.strap},
+    {title:'USB / JTAG / Console (funzioni fisse opzionali)', filter:p=>!!p.fixed},
+    {title:'GPIO generici (ADC / Touch / GPIO Matrix)', filter:p=>!p.strap && !p.fixed && !p.reserved},
+    {title:'Riservati a Flash / PSRAM interna', filter:p=>!!p.reserved},
+  ];
+
+  gridContainer.innerHTML = sections.map(sec=>{
+    const pins = PINS.filter(sec.filter);
+    if(!pins.length) return '';
+    return `<div class="section-title">${sec.title}</div><div class="grid">${pins.map(p=>pinCardHTML(p, conflictPins)).join('')}</div>`;
+  }).join('');
+
+  // event wiring
+  gridContainer.querySelectorAll('select[data-gpio]').forEach(sel=>{
+    sel.addEventListener('change', e=>{
+      assignments[+e.target.dataset.gpio] = e.target.value;
+      render();
+    });
+  });
+  gridContainer.querySelectorAll('.info-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>openPinInfo(+btn.dataset.gpio));
+  });
+}
+
+function pinCardHTML(p, conflictPins){
+  const reservedActive = isReservedActive(p);
+  const fixedLocked = p.fixed && isFixedLocked(p);
+  const catClass = pinCategoryClass(p);
+  const isConflict = conflictPins.has(p.gpio);
+  const currentVal = fixedLocked ? fixedLockValue(p) : assignments[p.gpio];
+  const isAssigned = currentVal && currentVal!=='none';
+
+  let badges = '';
+  if(p.adc) badges += `<span class="badge text-bg-secondary">ADC${p.adc.unit}_CH${p.adc.ch}</span>`;
+  if(p.touch) badges += `<span class="badge text-bg-secondary">TOUCH${p.touch}</span>`;
+  if(p.rtc) badges += `<span class="badge text-bg-dark border border-secondary">RTC</span>`;
+  if(p.strap) badges += `<span class="badge" style="background:var(--strap);color:#111">STRAP</span>`;
+
+  let body;
+  if(reservedActive){
+    body = `<div class="card-disabled-overlay mt-1">Riservato a Flash/PSRAM interna del modulo &mdash; non disponibile.</div>`;
+  } else if(fixedLocked){
+    body = `<div class="card-disabled-overlay mt-1">Bloccato su <strong>${humanSignal(currentVal)}</strong> dalle opzioni globali.</div>`;
+  } else {
+    const groups = buildOptions(p);
+    const optionsHtml = groups.map(g=>{
+      const opts = g.opts.map(o=>`<option value="${o.value}" ${o.value===currentVal?'selected':''}>${o.label}</option>`).join('');
+      return g.label ? `<optgroup label="${g.label}">${opts}</optgroup>` : opts;
+    }).join('');
+    body = `<select class="form-select form-select-sm pin-select mt-1" data-gpio="${p.gpio}">${optionsHtml}</select>`;
+  }
+
+  const cardClasses = ['pin-card', catClass];
+  if(isConflict) cardClasses.push('has-conflict');
+  if(isAssigned && !isConflict) cardClasses.push('assigned');
+
+  return `<div class="${cardClasses.join(' ')}">
+    <button class="info-btn" data-gpio="${p.gpio}" title="Dettagli">i</button>
+    <div class="pin-num">GPIO${p.gpio}</div>
+    <div class="pin-badges">${badges || '<span class="small-muted">—</span>'}</div>
+    ${body}
+  </div>`;
+}
+
+function renderSummary(conflictPins){
+  const rows = [];
+  PINS.forEach(p=>{
+    let val;
+    if(isReservedActive(p)) return;
+    if(p.fixed && isFixedLocked(p)) val = fixedLockValue(p);
+    else val = assignments[p.gpio];
+    if(!val || val==='none') return;
+    let note = '';
+    if(conflictPins.has(p.gpio)) note = '<span class="text-danger">conflitto</span>';
+    else if(p.strap) note = '<span style="color:var(--strap)">strapping</span>';
+    rows.push(`<tr><td>GPIO${p.gpio}</td><td>${val==='gpio_out'?'GPIO uscita':val==='gpio_in'?'GPIO ingresso':humanSignal(val)}</td><td>${note}</td></tr>`);
+  });
+  const tbody = document.querySelector('#summaryTable tbody');
+  tbody.innerHTML = rows.length ? rows.join('') : `<tr><td colspan="3" class="text-center small-muted py-3">Nessun pin assegnato</td></tr>`;
+}
+
+/* =========================================================================
+   MODALI
+   ========================================================================= */
+function openPinInfo(gpio){
+  const p = PINS.find(p=>p.gpio===gpio);
+  const title = document.getElementById('pinInfoTitle');
+  const body = document.getElementById('pinInfoBody');
+  title.textContent = `GPIO${gpio}`;
+  let html = '';
+  if(p.strap) html += `<div class="alert alert-warning"><strong>${p.strap.title}</strong><div class="mt-1">${p.strap.text}</div></div>`;
+  if(p.fixed) html += `<div class="alert alert-info"><strong>${p.fixed.title}</strong><div class="mt-1">${p.fixed.text}</div></div>`;
+  if(p.reserved) html += `<div class="alert alert-secondary"><strong>Pin riservato</strong><div class="mt-1">${p.notes[0]||''}</div></div>`;
+  if(p.adc) html += `<p class="small">Canale analogico fisso: <strong>ADC${p.adc.unit}_CH${p.adc.ch}</strong> (via IO MUX).</p>`;
+  if(p.touch) html += `<p class="small">Canale touch fisso: <strong>TOUCH${p.touch}</strong> (via IO MUX).</p>`;
+  if(p.notes && p.notes.length) p.notes.forEach(n=> html += `<p class="small text-secondary">${n}</p>`);
+  if(!html) html = `<p class="small text-secondary">Nessuna restrizione hardware particolare. Pin instradabile liberamente tramite GPIO Matrix verso qualunque periferica supportata (UART, SPI, I2C, I2S, TWAI, LEDC...).</p>`;
+  body.innerHTML = html;
+  new bootstrap.Modal(document.getElementById('pinInfoModal')).show();
+}
+
+/* =========================================================================
+   IMPORT / EXPORT / RESET / CODE
+   ========================================================================= */
+document.getElementById('btnExport').addEventListener('click', ()=>{
+  const data = {cfg, assignments};
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'esp32s3-pinconfig.json';
+  a.click();
+});
+
+document.getElementById('btnImport').addEventListener('click', ()=>document.getElementById('fileImport').click());
+document.getElementById('fileImport').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      if(data.cfg) Object.assign(cfg, data.cfg);
+      if(data.assignments) Object.assign(assignments, data.assignments);
+      syncControlsFromCfg();
+      render();
+    }catch(err){ alert('File JSON non valido: '+err.message); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+document.getElementById('btnReset').addEventListener('click', ()=>{
+  if(!confirm('Reimpostare tutte le assegnazioni dei pin?')) return;
+  PINS.forEach(p=>assignments[p.gpio] = defaultValueFor(p));
+  render();
+});
+
+function syncControlsFromCfg(){
+  document.getElementById('cfgVariant').value = cfg.variant;
+  document.getElementById('cfgUsb').value = cfg.usb;
+  document.getElementById('cfgConsole').checked = cfg.console;
+  document.getElementById('cfgJtag').checked = cfg.jtag;
+  document.getElementById('cfgWifi').checked = cfg.wifi;
+}
+
+document.getElementById('cfgVariant').addEventListener('change', e=>{ cfg.variant = e.target.value; render(); });
+document.getElementById('cfgUsb').addEventListener('change', e=>{ cfg.usb = e.target.value; render(); });
+document.getElementById('cfgConsole').addEventListener('change', e=>{ cfg.console = e.target.checked; render(); });
+document.getElementById('cfgJtag').addEventListener('change', e=>{ cfg.jtag = e.target.checked; render(); });
+document.getElementById('cfgWifi').addEventListener('change', e=>{ cfg.wifi = e.target.checked; render(); });
+
+document.getElementById('btnCode').addEventListener('click', ()=>{
+  const lines = ['// Generato da ESP32-S3 WROOM Pin Configurator', '// Modulo: ' + (cfg.variant==='octal'?'WROOM-2/2U (Octal)':'WROOM-1/1U (Quad)'), ''];
+  PINS.forEach(p=>{
+    if(isReservedActive(p)) return;
+    let val = (p.fixed && isFixedLocked(p)) ? fixedLockValue(p) : assignments[p.gpio];
+    if(!val || val==='none') return;
+    const macro = 'PIN_' + humanSignal(val).toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'');
+    lines.push(`#define ${macro} ${p.gpio}`);
+  });
+  document.querySelector('#codeOutput code').textContent = lines.join('\n');
+  new bootstrap.Modal(document.getElementById('codeModal')).show();
+});
+
+document.getElementById('btnCopyCode').addEventListener('click', ()=>{
+  const text = document.querySelector('#codeOutput code').textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn = document.getElementById('btnCopyCode');
+    const orig = btn.textContent; btn.textContent='Copiato!';
+    setTimeout(()=>btn.textContent=orig, 1200);
+  });
+});
+
+render();
+</script>
+</body>
+</html>
