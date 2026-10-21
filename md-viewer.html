@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markdown Viewer</title>
+
+<!-- Syntax highlighting (two themes, toggled via JS) -->
+<link id="hl-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<link id="hl-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css" disabled>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.11/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1f2328;
+    --muted: #656d76;
+    --border: #d0d7de;
+    --border-soft: #eaeef2;
+    --code-bg: #f6f8fa;
+    --inline-code-bg: #e4e7eb;
+    --inline-code-fg: #a3153b;
+    --link: #0969da;
+    --side-bg: #f8f8f8;
+    --side-active: #0969da;
+    --side-hover: rgba(0,0,0,.05);
+    --table-alt: #f6f8fa;
+    --quote: #d0d7de;
+    --scroll: rgba(100,100,100,.35);
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #1e1e1e;
+    --fg: #d4d4d4;
+    --muted: #8b949e;
+    --border: #3c3c3c;
+    --border-soft: #333333;
+    --code-bg: #252526;
+    --inline-code-bg: rgba(110,118,129,.3);
+    --inline-code-fg: #ce9178;
+    --link: #3794ff;
+    --side-bg: #181818;
+    --side-active: #3794ff;
+    --side-hover: rgba(255,255,255,.06);
+    --table-alt: #252526;
+    --quote: #3c3c3c;
+    --scroll: rgba(121,121,121,.4);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, Ubuntu, "Droid Sans", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    display: flex;
+    overflow: hidden;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll); }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ---------- Sidebar / TOC ---------- */
+  aside {
+    width: 270px;
+    flex-shrink: 0;
+    background: var(--side-bg);
+    border-right: 1px solid var(--border-soft);
+    display: flex;
+    flex-direction: column;
+    transition: margin-left .2s ease;
+  }
+  body.toc-hidden aside { margin-left: -270px; }
+
+  .side-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 10px 8px 16px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .side-head .fname {
+    flex: 1;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .icon-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    width: 28px; height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .icon-btn:hover { background: var(--side-hover); color: var(--fg); }
+  .icon-btn:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+  .icon-btn svg { width: 16px; height: 16px; }
+
+  nav#toc {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0 24px;
+    font-size: 13px;
+  }
+  nav#toc a {
+    display: block;
+    padding: 3px 14px;
+    color: var(--muted);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  nav#toc a:hover { color: var(--fg); background: var(--side-hover); }
+  nav#toc a.active { color: var(--side-active); border-left-color: var(--side-active); }
+  nav#toc a.l1 { font-weight: 600; color: var(--fg); }
+  nav#toc a.l1.active { color: var(--side-active); }
+  nav#toc a.l2 { padding-left: 26px; }
+  nav#toc a.l3 { padding-left: 38px; }
+  nav#toc a.l4 { padding-left: 50px; }
+  nav#toc a.l5, nav#toc a.l6 { padding-left: 62px; font-size: 12px; }
+  .toc-empty { padding: 8px 16px; color: var(--muted); font-size: 12px; }
+
+  /* Button to reopen the TOC when hidden */
+  #showToc {
+    position: fixed;
+    top: 10px; left: 10px;
+    z-index: 5;
+    display: none;
+    background: var(--bg);
+    border: 1px solid var(--border-soft);
+  }
+  body.toc-hidden #showToc { display: grid; }
+
+  /* ---------- Document ---------- */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+  }
+  @media (prefers-reduced-motion: reduce) { main { scroll-behavior: auto; } aside { transition: none; } }
+
+  .markdown-body {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 32px 40px 120px;
+    word-wrap: break-word;
+  }
+
+  .markdown-body h1, .markdown-body h2, .markdown-body h3,
+  .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+    font-weight: 600;
+    line-height: 1.25;
+    margin: 24px 0 16px;
+    scroll-margin-top: 16px;
+  }
+  .markdown-body h1 { font-size: 2em; padding-bottom: .3em; border-bottom: 1px solid var(--border-soft); }
+  .markdown-body h2 { font-size: 1.5em; padding-bottom: .3em; border-bottom: 1px solid var(--border-soft); }
+  .markdown-body h3 { font-size: 1.25em; }
+  .markdown-body h4 { font-size: 1em; }
+  .markdown-body h5 { font-size: .875em; }
+  .markdown-body h6 { font-size: .85em; color: var(--muted); }
+  .markdown-body > :first-child { margin-top: 0; }
+
+  .markdown-body p, .markdown-body ul, .markdown-body ol,
+  .markdown-body blockquote, .markdown-body table, .markdown-body pre,
+  .markdown-body details { margin: 0 0 16px; }
+
+  .markdown-body a { color: var(--link); text-decoration: none; }
+  .markdown-body a:hover { text-decoration: underline; }
+
+  .markdown-body ul, .markdown-body ol { padding-left: 2em; }
+  .markdown-body li + li { margin-top: .25em; }
+  .markdown-body li > ul, .markdown-body li > ol { margin: .25em 0 0; }
+  .markdown-body li input[type="checkbox"] { margin: 0 .4em .2em -1.4em; vertical-align: middle; }
+  .markdown-body li:has(> input[type="checkbox"]) { list-style: none; }
+
+  .markdown-body blockquote {
+    padding: 0 1em;
+    color: var(--muted);
+    border-left: .25em solid var(--quote);
+  }
+  .markdown-body blockquote > :last-child { margin-bottom: 0; }
+
+  .markdown-body hr {
+    height: 2px; border: 0;
+    background: var(--border-soft);
+    margin: 24px 0;
+  }
+
+  .markdown-body img { max-width: 100%; }
+
+  /* Code */
+  .markdown-body code, .markdown-body pre, .markdown-body kbd {
+    font-family: "SF Mono", Monaco, Menlo, Consolas, "Ubuntu Mono", "Liberation Mono", "Courier New", monospace;
+    font-size: 13px;
+  }
+  .markdown-body :not(pre) > code {
+    background: var(--inline-code-bg);
+    color: var(--inline-code-fg);
+    padding: .15em .4em;
+    border-radius: 4px;
+    font-size: 85%;
+  }
+  .markdown-body pre {
+    position: relative;
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    line-height: 1.45;
+  }
+  .markdown-body pre code.hljs { background: transparent; padding: 0; }
+  .markdown-body pre .lang {
+    position: absolute;
+    top: 8px; right: 44px;
+    font-size: 11px;
+    color: var(--muted);
+    user-select: none;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 6px; right: 6px;
+    width: 28px; height: 26px;
+    display: grid;
+    place-items: center;
+    background: var(--bg);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: .55;
+    transition: opacity .15s;
+  }
+  .markdown-body pre:hover .copy-btn,
+  .copy-btn:focus-visible,
+  .copy-btn.done { opacity: 1; }
+  .copy-btn:hover { color: var(--fg); }
+  .copy-btn:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+  .copy-btn.done { color: #1a7f37; border-color: #1a7f37; }
+  :root[data-theme="dark"] .copy-btn.done { color: #3fb950; border-color: #3fb950; }
+  .copy-btn svg { width: 14px; height: 14px; }
+  .markdown-body pre:has(.copy-btn) { padding-right: 48px; }
+  .markdown-body kbd {
+    padding: 2px 5px;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    font-size: 11px;
+  }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; margin: 0 0 16px; }
+  .table-wrap table { margin: 0; }
+  .markdown-body table { border-collapse: collapse; border-spacing: 0; }
+  .markdown-body th, .markdown-body td {
+    padding: 6px 13px;
+    border: 1px solid var(--border);
+  }
+  .markdown-body th { font-weight: 600; }
+  .markdown-body tr:nth-child(2n) td { background: var(--table-alt); }
+
+  /* Mermaid diagrams */
+  .markdown-body .mermaid {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 16px;
+    overflow-x: auto;
+  }
+  .mermaid-error {
+    color: #cf222e;
+    font-size: 12px;
+    white-space: pre-wrap;
+  }
+
+  /* ---------- Empty state ---------- */
+  .empty {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    color: var(--muted);
+    padding: 24px;
+  }
+  .empty .box {
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 48px 56px;
+  }
+  .empty p { margin: 0 0 14px; }
+  .btn {
+    font: inherit;
+    font-size: 13px;
+    background: var(--link);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 14px;
+    cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+  /* ---------- Overlay drag & drop ---------- */
+  #drop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: none;
+    place-items: center;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    border: 2px dashed var(--link);
+    color: var(--link);
+    font-size: 15px;
+    pointer-events: none;
+  }
+  body.dragging #drop { display: grid; }
+
+  @media (max-width: 760px) {
+    aside { position: fixed; inset: 0 auto 0 0; z-index: 10; height: 100%; }
+    .markdown-body { padding: 56px 18px 80px; }
+  }
+
+  @media print {
+    aside, #showToc { display: none !important; }
+    body { display: block; overflow: visible; }
+    main { overflow: visible; }
+  }
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="side-head">
+    <span class="fname" id="fname">No file</span>
+    <button class="icon-btn" id="openBtn" title="Open file (Ctrl+O)" aria-label="Open file">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3A1.5 1.5 0 0 1 3 1.5h3.6l1.5 1.5H13A1.5 1.5 0 0 1 14.5 4.5V5H4.2a1.5 1.5 0 0 0-1.42 1.02L1.5 9.8V3zm1.66 3.34A.5.5 0 0 1 3.63 6H15a.5.5 0 0 1 .47.66l-2 6a.5.5 0 0 1-.47.34H1.5a.5.5 0 0 1-.47-.66l2.13-6z"/></svg>
+    </button>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5v11a5.5 5.5 0 0 1 0-11z"/></svg>
+    </button>
+    <button class="icon-btn" id="hideToc" title="Hide table of contents" aria-label="Hide table of contents">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M10.35 3.65a.5.5 0 0 1 0 .7L6.71 8l3.64 3.65a.5.5 0 0 1-.7.7l-4-4a.5.5 0 0 1 0-.7l4-4a.5.5 0 0 1 .7 0z"/></svg>
+    </button>
+  </div>
+  <nav id="toc" aria-label="Table of contents"><div class="toc-empty">The table of contents will appear here.</div></nav>
+</aside>
+
+<button class="icon-btn" id="showToc" title="Show table of contents" aria-label="Show table of contents">
+  <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3.5h12v1H2zm0 4h12v1H2zm0 4h12v1H2z"/></svg>
+</button>
+
+<main id="main">
+  <div class="empty" id="empty">
+    <div class="box">
+      <p>Drop a Markdown file here</p>
+      <button class="btn" id="openBtn2">Browse files</button>
+    </div>
+  </div>
+  <article class="markdown-body" id="doc" hidden></article>
+</main>
+
+<div id="drop">Drop to open</div>
+<input type="file" id="fileInput" accept=".md,.markdown,.mdown,.mkd,.txt,text/markdown" hidden>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const doc = $('doc'), toc = $('toc'), main = $('main');
+  const root = document.documentElement;
+
+  /* ---------- Theme ---------- */
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  let theme;
+  try { theme = localStorage.getItem('mdv-theme'); } catch (e) {}
+  if (!theme) theme = mq.matches ? 'dark' : 'light';
+
+  function applyTheme(t) {
+    theme = t;
+    root.dataset.theme = t;
+    $('hl-light').disabled = t === 'dark';
+    $('hl-dark').disabled = t !== 'dark';
+    try { localStorage.setItem('mdv-theme', t); } catch (e) {}
+    if (window.mermaid) {
+      mermaid.initialize({ startOnLoad: false, theme: t === 'dark' ? 'dark' : 'default', securityLevel: 'strict' });
+      renderMermaid();
+    }
+  }
+  $('themeBtn').onclick = () => applyTheme(theme === 'dark' ? 'light' : 'dark');
+
+  /* ---------- Markdown ---------- */
+  const renderer = new marked.Renderer();
+  renderer.code = (code, lang) => {
+    lang = (lang || '').trim().split(/\s+/)[0].toLowerCase();
+    if (lang === 'mermaid') {
+      const src = code.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      return `<div class="mermaid" data-src="${encodeURIComponent(code)}">${src}</div>`;
+    }
+    let html, label = lang;
+    if (lang && hljs.getLanguage(lang)) {
+      html = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+    } else if (lang) {
+      html = escapeHtml(code);
+    } else {
+      // no language: plain text (keeps ASCII diagrams aligned)
+      html = escapeHtml(code);
+    }
+    return `<pre>${label ? `<span class="lang">${escapeHtml(label)}</span>` : ''}<code class="hljs">${html}</code></pre>`;
+  };
+  marked.setOptions({ renderer, gfm: true, breaks: false });
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function slugify(text, used) {
+    let base = text.toLowerCase().trim()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\w\s-]/g, '').replace(/\s+/g, '-') || 'section';
+    let s = base, i = 1;
+    while (used.has(s)) s = `${base}-${i++}`;
+    used.add(s);
+    return s;
+  }
+
+  function render(md, name) {
+    const html = DOMPurify.sanitize(marked.parse(md), {
+      ADD_ATTR: ['data-src', 'target'],
+    });
+    doc.innerHTML = html;
+    doc.hidden = false;
+    $('empty').hidden = true;
+    $('fname').textContent = name || 'Document';
+    $('fname').title = name || '';
+    document.title = name ? `${name} — Markdown Viewer` : 'Markdown Viewer';
+
+    // Horizontally scrollable tables
+    doc.querySelectorAll('table').forEach(t => {
+      const w = document.createElement('div');
+      w.className = 'table-wrap';
+      t.parentNode.insertBefore(w, t);
+      w.appendChild(t);
+    });
+
+    // External links open in a new tab
+    doc.querySelectorAll('a[href^="http"]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+
+    addCopyButtons();
+    buildToc();
+    renderMermaid();
+    main.scrollTop = 0;
+  }
+
+  /* ---------- Copy code ---------- */
+  const ICON_COPY = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 4V2.5A1.5 1.5 0 0 1 5.5 1h8A1.5 1.5 0 0 1 15 2.5v8a1.5 1.5 0 0 1-1.5 1.5H12v1.5A1.5 1.5 0 0 1 10.5 15h-8A1.5 1.5 0 0 1 1 13.5v-8A1.5 1.5 0 0 1 2.5 4H4zm1 0h5.5A1.5 1.5 0 0 1 12 5.5V11h1.5a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-8a.5.5 0 0 0-.5.5V4zM2.5 5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-8z"/></svg>';
+  const ICON_DONE = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/></svg>';
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      // Fallback for browsers that block the Clipboard API on local files
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (_) {}
+      ta.remove();
+      return ok;
+    }
+  }
+
+  function addCopyButtons() {
+    doc.querySelectorAll('pre').forEach(pre => {
+      const code = pre.querySelector('code');
+      if (!code || pre.classList.contains('mermaid-error')) return;
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.type = 'button';
+      btn.title = 'Copy code';
+      btn.setAttribute('aria-label', 'Copy code');
+      btn.innerHTML = ICON_COPY;
+      let timer;
+      btn.onclick = async () => {
+        const ok = await copyText(code.textContent);
+        btn.innerHTML = ok ? ICON_DONE : ICON_COPY;
+        btn.title = ok ? 'Copied' : 'Copy failed';
+        btn.classList.toggle('done', ok);
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          btn.innerHTML = ICON_COPY;
+          btn.title = 'Copy code';
+          btn.classList.remove('done');
+        }, 1600);
+      };
+      pre.appendChild(btn);
+    });
+  }
+
+  /* ---------- Table of contents ---------- */
+  let headings = [];
+  function buildToc() {
+    const used = new Set();
+    headings = [...doc.querySelectorAll('h1,h2,h3,h4,h5,h6')];
+    toc.innerHTML = '';
+    if (!headings.length) {
+      toc.innerHTML = '<div class="toc-empty">No headings in this document.</div>';
+      return;
+    }
+    const minLevel = Math.min(...headings.map(h => +h.tagName[1]));
+    const frag = document.createDocumentFragment();
+    headings.forEach(h => {
+      h.id = slugify(h.textContent, used);
+      const a = document.createElement('a');
+      a.href = '#' + h.id;
+      a.textContent = h.textContent;
+      a.title = h.textContent;
+      a.className = 'l' + (+h.tagName[1] - minLevel + 1);
+      a.onclick = e => {
+        e.preventDefault();
+        h.scrollIntoView({ block: 'start' });
+        history.replaceState(null, '', '#' + h.id);
+      };
+      frag.appendChild(a);
+    });
+    toc.appendChild(frag);
+    updateActive();
+  }
+
+  function updateActive() {
+    if (!headings.length) return;
+    const top = main.getBoundingClientRect().top + 24;
+    let current = headings[0];
+    for (const h of headings) {
+      if (h.getBoundingClientRect().top <= top) current = h; else break;
+    }
+    if (main.scrollTop + main.clientHeight >= main.scrollHeight - 2) current = headings[headings.length - 1];
+    toc.querySelectorAll('a').forEach(a => {
+      const on = a.getAttribute('href') === '#' + current.id;
+      a.classList.toggle('active', on);
+      if (on) {
+        const r = a.getBoundingClientRect(), tr = toc.getBoundingClientRect();
+        if (r.top < tr.top || r.bottom > tr.bottom) a.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+  let ticking = false;
+  main.addEventListener('scroll', () => {
+    if (!ticking) { requestAnimationFrame(() => { updateActive(); ticking = false; }); ticking = true; }
+  });
+
+  /* ---------- Mermaid ---------- */
+  let mermaidRun = 0;
+  async function renderMermaid() {
+    if (!window.mermaid) return;
+    const nodes = doc.querySelectorAll('.mermaid[data-src]');
+    const run = ++mermaidRun;
+    let i = 0;
+    for (const node of nodes) {
+      const src = decodeURIComponent(node.dataset.src);
+      try {
+        const { svg } = await mermaid.render(`mmd-${run}-${i++}`, src);
+        if (run !== mermaidRun) return;
+        node.innerHTML = svg;
+      } catch (err) {
+        node.innerHTML = `<pre class="mermaid-error">Diagram error: ${escapeHtml(String(err.message || err))}</pre>`;
+      }
+    }
+  }
+
+  /* ---------- Opening files ---------- */
+  function openFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => render(reader.result, file.name);
+    reader.readAsText(file, 'UTF-8');
+  }
+  const input = $('fileInput');
+  $('openBtn').onclick = $('openBtn2').onclick = () => input.click();
+  input.onchange = () => { openFile(input.files[0]); input.value = ''; };
+
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') { e.preventDefault(); input.click(); }
+  });
+
+  let dragDepth = 0;
+  window.addEventListener('dragenter', e => {
+    if ([...e.dataTransfer.types].includes('Files')) { dragDepth++; document.body.classList.add('dragging'); }
+  });
+  window.addEventListener('dragleave', () => {
+    if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); }
+  });
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => {
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove('dragging');
+    openFile(e.dataTransfer.files[0]);
+  });
+
+  /* ---------- Show/hide table of contents ---------- */
+  $('hideToc').onclick = () => document.body.classList.add('toc-hidden');
+  $('showToc').onclick = () => document.body.classList.remove('toc-hidden');
+  if (window.innerWidth <= 760) document.body.classList.add('toc-hidden');
+
+  applyTheme(theme);
+})();
+</script>
+</body>
+</html>
